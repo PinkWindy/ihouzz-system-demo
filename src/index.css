@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --primary-color: #0056b3;
+  --secondary-color: #ff6b00;
+  --bg-light: #f4f7f6;
+  --text-dark: #333333;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-light);
+  color: var(--text-dark);
+}
+
+/* Navbar */
+.navbar-brand {
+  font-weight: 700;
+  color: var(--primary-color) !important;
+}
+
+/* Card Styling */
+.card {
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 15px rgba(0,0,0,0.1);
+}
+
+/* Mobile View Container */
+.mobile-container {
+  max-width: 480px;
+  margin: 0 auto;
+  background: white;
+  min-height: 100vh;
+  box-shadow: 0 0 20px rgba(0,0,0,0.1);
+}
+
+/* Buttons */
+.btn-primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-weight: 500;
+}
+
+.btn-primary:hover {
+  background-color: #004494;
+}
+
+/* Status Badges */
+.badge-chuanduyet { background-color: #ffc107; color: #000; }
+.badge-duocduyet { background-color: #198754; color: #fff; }
+.badge-dangniemyet { background-color: #0dcaf0; color: #000; }
+
+.fw-semibold { font-weight: 600; }

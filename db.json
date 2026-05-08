@@ -1,0 +1,245 @@
+{
+  "properties": [
+    {
+      "id": "LS-00001", "address": "12 Nguyễn Bình, P.Tân Thuận Đông, Q.7, TP.HCM",
+      "type": "Bán", "price": 1780000000, "price_display": "1.78 Tỷ",
+      "area": 37, "width": 3.5, "length": 10.5, "bedrooms": 2, "bathrooms": 2,
+      "direction": "Đông", "road_width": "3m (hẻm xe máy)", "legal": "Sổ hồng riêng",
+      "level1_status": "Đã gỡ nguồn", "level2_status": "Đã gỡ nguồn", "warehouse_type": null,
+      "createdBy": "Nguyễn Văn Hùng", "createdBy_id": "u001",
+      "pos_id": 1, "pos_name": "POS Q.7 – Nhà Bè", "pos_manager": "Trần Hồng Oanh",
+      "createdAt": "2026-04-10T08:00:00Z", "updatedAt": "2026-05-01T10:00:00Z"
+    },
+    {
+      "id": "LS-00002", "address": "45 Cộng Hòa, P.13, Tân Bình, TP.HCM",
+      "type": "Thuê", "price": 18000000, "price_display": "18 Triệu/tháng",
+      "area": 60, "width": 4, "length": 15, "bedrooms": 3, "bathrooms": 2,
+      "direction": "Tây Nam", "road_width": "10m (xe hơi)", "legal": "Hợp đồng thuê",
+      "level1_status": "Chờ POS duyệt", "level2_status": "Khởi tạo", "warehouse_type": null,
+      "createdBy": "Nguyễn Văn Hùng", "createdBy_id": "u001",
+      "pos_id": 1, "pos_name": "POS Q.7 – Nhà Bè", "pos_manager": "Trần Hồng Oanh",
+      "createdAt": "2026-05-05T09:00:00Z", "updatedAt": "2026-05-05T09:00:00Z"
+    },
+    {
+      "id": "LS-00003", "address": "88 Lý Thường Kiệt, P.14, Q.10, TP.HCM",
+      "type": "Bán", "price": 6200000000, "price_display": "6.2 Tỷ",
+      "area": 72, "width": 4, "length": 18, "bedrooms": 3, "bathrooms": 2,
+      "direction": "Nam", "road_width": "8m (ô tô tránh)", "legal": "Sổ hồng riêng",
+      "level1_status": "Bị từ chối", "level2_status": "Khởi tạo", "warehouse_type": null,
+      "rejection_reason": "Hồ sơ pháp lý chưa đầy đủ. Cần bổ sung GCN quyền sử dụng đất.",
+      "createdBy": "Nguyễn Văn Hùng", "createdBy_id": "u001",
+      "pos_id": 1, "pos_name": "POS Q.7 – Nhà Bè", "pos_manager": "Trần Hồng Oanh",
+      "createdAt": "2026-04-20T10:00:00Z", "updatedAt": "2026-05-02T14:00:00Z"
+    },
+    {
+      "id": "LS-00004", "address": "22 Trường Chinh, P.12, Tân Bình, TP.HCM",
+      "type": "Thuê", "price": 25000000, "price_display": "25 Triệu/tháng",
+      "area": 90, "width": 5, "length": 18, "bedrooms": 3, "bathrooms": 3,
+      "direction": "Đông Nam", "road_width": "12m", "legal": "Hợp đồng thuê",
+      "level1_status": "Được duyệt", "level2_status": "Chưa niêm yết", "warehouse_type": "Kho chuẩn",
+      "createdBy": "Đinh Việt Anh", "createdBy_id": "u002",
+      "pos_id": 1, "pos_name": "POS Q.7 – Nhà Bè", "pos_manager": "Trần Hồng Oanh",
+      "approvedAt": "2026-05-01T11:00:00Z", "approvedBy": "Trần Hồng Oanh",
+      "createdAt": "2026-04-28T08:00:00Z", "updatedAt": "2026-05-01T11:00:00Z"
+    },
+    {
+      "id": "LS-00005", "address": "10 Hoàng Diệu, P.13, Q.4, TP.HCM",
+      "type": "Bán", "price": 4500000000, "price_display": "4.5 Tỷ",
+      "area": 55, "width": 3.8, "length": 14.5, "bedrooms": 3, "bathrooms": 2,
+      "direction": "Tây", "road_width": "5m", "legal": "Sổ hồng riêng",
+      "level1_status": "Được đảm bảo", "level2_status": "Chưa niêm yết", "warehouse_type": "Kho đảm bảo",
+      "createdBy": "Đinh Việt Anh", "createdBy_id": "u002",
+      "pos_id": 1, "pos_name": "POS Q.7 – Nhà Bè", "pos_manager": "Trần Hồng Oanh",
+      "approvedAt": "2026-05-02T09:00:00Z", "approvedBy": "Trần Hồng Oanh",
+      "createdAt": "2026-04-29T10:00:00Z", "updatedAt": "2026-05-02T09:00:00Z"
+    },
+    {
+      "id": "LS-00006", "address": "7 Bạch Đằng, P.24, Bình Thạnh, TP.HCM",
+      "type": "Thuê", "price": 12000000, "price_display": "12 Triệu/tháng",
+      "area": 45, "width": 3, "length": 15, "bedrooms": 2, "bathrooms": 1,
+      "direction": "Bắc", "road_width": "6m", "legal": "Hợp đồng thuê",
+      "level1_status": "Được duyệt", "level2_status": "Đang niêm yết", "warehouse_type": "Kho chuẩn",
+      "createdBy": "Đinh Việt Anh", "createdBy_id": "u002",
+      "pos_id": 1, "pos_name": "POS Q.7 – Nhà Bè", "pos_manager": "Trần Hồng Oanh",
+      "approvedAt": "2026-04-25T10:00:00Z", "approvedBy": "Trần Hồng Oanh",
+      "createdAt": "2026-04-22T08:00:00Z", "updatedAt": "2026-05-03T15:00:00Z"
+    },
+    {
+      "id": "LS-00007", "address": "101 Phạm Văn Đồng, P.3, Gò Vấp, TP.HCM",
+      "type": "Bán", "price": 5900000000, "price_display": "5.9 Tỷ",
+      "area": 68, "width": 4, "length": 17, "bedrooms": 3, "bathrooms": 2,
+      "direction": "Đông Bắc", "road_width": "6m", "legal": "Sổ hồng riêng",
+      "level1_status": "Được đảm bảo", "level2_status": "Đang niêm yết", "warehouse_type": "Kho đảm bảo",
+      "createdBy": "Đinh Việt Anh", "createdBy_id": "u002",
+      "pos_id": 1, "pos_name": "POS Q.7 – Nhà Bè", "pos_manager": "Trần Hồng Oanh",
+      "approvedAt": "2026-04-26T11:00:00Z", "approvedBy": "Trần Hồng Oanh",
+      "createdAt": "2026-04-23T09:00:00Z", "updatedAt": "2026-05-04T10:00:00Z"
+    },
+    {
+      "id": "LS-00008", "address": "55 Nguyễn Trọng Tuyển, P.1, Tân Bình, TP.HCM",
+      "type": "Thuê", "price": 20000000, "price_display": "20 Triệu/tháng",
+      "area": 70, "width": 4, "length": 17.5, "bedrooms": 3, "bathrooms": 2,
+      "direction": "Nam", "road_width": "8m", "legal": "Hợp đồng thuê",
+      "level1_status": "Được duyệt", "level2_status": "Chưa niêm yết", "warehouse_type": "Kho chuẩn",
+      "createdBy": "Đinh Việt Anh", "createdBy_id": "u002",
+      "pos_id": 1, "pos_name": "POS Q.7 – Nhà Bè", "pos_manager": "Trần Hồng Oanh",
+      "approvedAt": "2026-05-03T09:00:00Z", "approvedBy": "Trần Hồng Oanh",
+      "createdAt": "2026-05-01T08:00:00Z", "updatedAt": "2026-05-03T09:00:00Z"
+    },
+    {
+      "id": "LS-00009", "address": "200 Lê Văn Sỹ, P.14, Q.3, TP.HCM",
+      "type": "Bán", "price": 7800000000, "price_display": "7.8 Tỷ",
+      "area": 80, "width": 4, "length": 20, "bedrooms": 5, "bathrooms": 4,
+      "direction": "Tây Bắc", "road_width": "10m", "legal": "Sổ hồng riêng",
+      "level1_status": "Được duyệt", "level2_status": "Đang niêm yết", "warehouse_type": "Kho chuẩn",
+      "createdBy": "Trần Thế Tùng", "createdBy_id": "u003",
+      "pos_id": 2, "pos_name": "POS Q.1 – Trung Tâm", "pos_manager": "Hồng Bảo Quân",
+      "approvedAt": "2026-04-28T14:00:00Z", "approvedBy": "Hồng Bảo Quân",
+      "createdAt": "2026-04-25T10:00:00Z", "updatedAt": "2026-05-05T09:00:00Z"
+    },
+    {
+      "id": "LS-00010", "address": "15 Trần Hưng Đạo, P.5, Q.1, TP.HCM",
+      "type": "Thuê", "price": 30000000, "price_display": "30 Triệu/tháng",
+      "area": 95, "width": 5, "length": 19, "bedrooms": 4, "bathrooms": 3,
+      "direction": "Đông Nam", "road_width": "12m", "legal": "Hợp đồng thuê",
+      "level1_status": "Được đảm bảo", "level2_status": "Thẩm định phí", "warehouse_type": "Kho đảm bảo",
+      "createdBy": "Trần Thế Tùng", "createdBy_id": "u003",
+      "pos_id": 2, "pos_name": "POS Q.1 – Trung Tâm", "pos_manager": "Hồng Bảo Quân",
+      "approvedAt": "2026-04-30T10:00:00Z", "approvedBy": "Hồng Bảo Quân",
+      "createdAt": "2026-04-27T11:00:00Z", "updatedAt": "2026-05-06T08:00:00Z"
+    },
+    {
+      "id": "LS-00011", "address": "Sunrise City, 17 Nguyễn Hữu Thọ, P.Tân Hưng, Q.7, TP.HCM",
+      "type": "Bán", "price": 3200000000, "price_display": "3.2 Tỷ",
+      "area": 75, "width": null, "length": null, "bedrooms": 2, "bathrooms": 2,
+      "direction": "Đông Nam", "road_width": "Đường nội khu", "legal": "Sổ hồng riêng",
+      "level1_status": "Chờ duyệt đảm bảo", "level2_status": "Khởi tạo", "warehouse_type": null,
+      "createdBy": "Lê Đức Tài", "createdBy_id": "u004",
+      "pos_id": 2, "pos_name": "POS Q.1 – Trung Tâm", "pos_manager": "Hồng Bảo Quân",
+      "createdAt": "2026-05-05T14:00:00Z", "updatedAt": "2026-05-05T14:00:00Z"
+    },
+    {
+      "id": "LS-00012", "address": "Vinhomes Central Park, 720A Điện Biên Phủ, P.22, Bình Thạnh, TP.HCM",
+      "type": "Thuê", "price": 22000000, "price_display": "22 Triệu/tháng",
+      "area": 80, "width": null, "length": null, "bedrooms": 2, "bathrooms": 2,
+      "direction": "Nam", "road_width": "Đường nội khu", "legal": "Hợp đồng thuê",
+      "level1_status": "Được duyệt", "level2_status": "Chưa niêm yết", "warehouse_type": "Kho chuẩn",
+      "createdBy": "Lê Đức Tài", "createdBy_id": "u004",
+      "pos_id": 2, "pos_name": "POS Q.1 – Trung Tâm", "pos_manager": "Hồng Bảo Quân",
+      "approvedAt": "2026-05-04T10:00:00Z", "approvedBy": "Hồng Bảo Quân",
+      "createdAt": "2026-05-02T09:00:00Z", "updatedAt": "2026-05-04T10:00:00Z"
+    },
+    {
+      "id": "LS-00013", "address": "Masteri Thảo Điền, 159 Xa Lộ Hà Nội, P.Thảo Điền, Q.2, TP.HCM",
+      "type": "Bán", "price": 4500000000, "price_display": "4.5 Tỷ",
+      "area": 90, "width": null, "length": null, "bedrooms": 3, "bathrooms": 2,
+      "direction": "Đông Bắc", "road_width": "Đường nội khu", "legal": "Sổ hồng riêng",
+      "level1_status": "Được đảm bảo", "level2_status": "Đang niêm yết", "warehouse_type": "Kho đảm bảo",
+      "createdBy": "Lê Đức Tài", "createdBy_id": "u004",
+      "pos_id": 2, "pos_name": "POS Q.1 – Trung Tâm", "pos_manager": "Hồng Bảo Quân",
+      "approvedAt": "2026-04-29T11:00:00Z", "approvedBy": "Hồng Bảo Quân",
+      "createdAt": "2026-04-26T10:00:00Z", "updatedAt": "2026-05-05T16:00:00Z"
+    },
+    {
+      "id": "LS-00014", "address": "The Gold View, 346 Bến Vân Đồn, P.1, Q.4, TP.HCM",
+      "type": "Thuê", "price": 18000000, "price_display": "18 Triệu/tháng",
+      "area": 65, "width": null, "length": null, "bedrooms": 2, "bathrooms": 1,
+      "direction": "Tây Nam", "road_width": "Đường nội khu", "legal": "Hợp đồng thuê",
+      "level1_status": "Được duyệt", "level2_status": "Đang niêm yết", "warehouse_type": "Kho chuẩn",
+      "createdBy": "Lê Đức Tài", "createdBy_id": "u004",
+      "pos_id": 2, "pos_name": "POS Q.1 – Trung Tâm", "pos_manager": "Hồng Bảo Quân",
+      "approvedAt": "2026-04-30T14:00:00Z", "approvedBy": "Hồng Bảo Quân",
+      "createdAt": "2026-04-28T09:00:00Z", "updatedAt": "2026-05-06T10:00:00Z"
+    },
+    {
+      "id": "LS-00015", "address": "Saigon Royal, 34 Bến Vân Đồn, P.12, Q.4, TP.HCM",
+      "type": "Bán", "price": 5800000000, "price_display": "5.8 Tỷ",
+      "area": 105, "width": null, "length": null, "bedrooms": 3, "bathrooms": 3,
+      "direction": "Bắc", "road_width": "Đường nội khu", "legal": "Sổ hồng riêng",
+      "level1_status": "Được duyệt", "level2_status": "Chưa niêm yết", "warehouse_type": "Kho chuẩn",
+      "createdBy": "Lê Đức Tài", "createdBy_id": "u004",
+      "pos_id": 2, "pos_name": "POS Q.1 – Trung Tâm", "pos_manager": "Hồng Bảo Quân",
+      "approvedAt": "2026-05-05T10:00:00Z", "approvedBy": "Hồng Bảo Quân",
+      "createdAt": "2026-05-03T08:00:00Z", "updatedAt": "2026-05-05T10:00:00Z"
+    }
+  ],
+  "listings": [
+    {
+      "id": "LT-00001", "property_id": "LS-00006",
+      "title": "Cho thuê nhà nguyên căn Bình Thạnh – 2PN full nội thất",
+      "description": "Nhà nguyên căn đẹp, hẻm thông thoáng, gần trường học và chợ. Full nội thất cơ bản, phù hợp gia đình nhỏ hoặc cặp đôi.",
+      "images": ["img1.jpg", "img2.jpg", "img3.jpg"],
+      "contact_phone": "0901 234 567",
+      "listing_status": "Đã duyệt",
+      "createdBy": "Đinh Việt Anh", "createdBy_id": "u002",
+      "approvedBy": "Nguyễn Thị MKT", "approvedBy_id": "u_mkt1",
+      "createdAt": "2026-04-26T09:00:00Z", "approvedAt": "2026-04-27T10:00:00Z",
+      "updatedAt": "2026-04-27T10:00:00Z", "expiredAt": "2026-07-27T10:00:00Z"
+    },
+    {
+      "id": "LT-00002", "property_id": "LS-00007",
+      "title": "Bán nhà Gò Vấp – Mặt tiền Phạm Văn Đồng – SHR",
+      "description": "Nhà phố mặt tiền đường lớn, kinh doanh thuận lợi. Sổ hồng riêng, pháp lý minh bạch.",
+      "images": ["img_gv1.jpg", "img_gv2.jpg"],
+      "contact_phone": "0902 345 678",
+      "listing_status": "Chờ duyệt",
+      "createdBy": "Đinh Việt Anh", "createdBy_id": "u002",
+      "createdAt": "2026-05-05T14:00:00Z", "updatedAt": "2026-05-05T14:00:00Z",
+      "expiredAt": null
+    },
+    {
+      "id": "LT-00003", "property_id": "LS-00009",
+      "title": "Bán nhà Q.3 – Lê Văn Sỹ – 5PN – 7.8 Tỷ",
+      "description": "Nhà phố đẹp, hướng Tây Bắc đón gió, đường 10m ô tô thoải mái. Phù hợp ở hoặc văn phòng.",
+      "images": ["img_q3_1.jpg", "img_q3_2.jpg"],
+      "contact_phone": "0903 456 789",
+      "listing_status": "Yêu cầu gỡ tin",
+      "unlist_reason": "Ngưng niêm yết",
+      "unlist_note": "Chủ nhà đã tìm được người mua, tạm ngưng đăng tin để hoàn tất thủ tục.",
+      "createdBy": "Trần Thế Tùng", "createdBy_id": "u003",
+      "approvedBy": "Nguyễn Thị MKT", "approvedBy_id": "u_mkt1",
+      "createdAt": "2026-04-29T10:00:00Z", "approvedAt": "2026-04-30T09:00:00Z",
+      "unlistRequestedAt": "2026-05-06T10:00:00Z",
+      "updatedAt": "2026-05-06T10:00:00Z", "expiredAt": "2026-07-30T09:00:00Z"
+    },
+    {
+      "id": "LT-00004", "property_id": "LS-00013",
+      "title": "Bán căn hộ Masteri Thảo Điền – 3PN view sông",
+      "description": "Căn góc 3 phòng ngủ, view sông đẹp, nội thất cao cấp. Dự án Masteri uy tín, tiện ích đầy đủ.",
+      "images": ["img_mstr1.jpg"],
+      "contact_phone": "0904 567 890",
+      "listing_status": "Từ chối",
+      "rejection_note": "Hình ảnh không đủ chất lượng. Yêu cầu chụp lại ít nhất 5 ảnh thực tế căn hộ, bao gồm ảnh ban công và view sông.",
+      "createdBy": "Lê Đức Tài", "createdBy_id": "u004",
+      "rejectedBy": "Nguyễn Thị MKT", "rejectedBy_id": "u_mkt1",
+      "rejectedAt": "2026-05-05T16:00:00Z",
+      "createdAt": "2026-05-04T11:00:00Z", "updatedAt": "2026-05-05T16:00:00Z",
+      "expiredAt": null
+    },
+    {
+      "id": "LT-00005", "property_id": "LS-00014",
+      "title": "Cho thuê căn hộ The Gold View – 2PN full nội thất",
+      "description": "Căn hộ cao cấp The Gold View, view sông Sài Gòn tuyệt đẹp. Đầy đủ nội thất, sẵn sàng dọn vào ở.",
+      "images": ["img_tgv1.jpg", "img_tgv2.jpg", "img_tgv3.jpg"],
+      "contact_phone": "0905 678 901",
+      "listing_status": "Chờ duyệt chỉnh sửa",
+      "prev_rejection_note": "Mô tả quá ngắn. Cần bổ sung thông tin tiện ích dự án và điều khoản thuê.",
+      "createdBy": "Lê Đức Tài", "createdBy_id": "u004",
+      "createdAt": "2026-05-03T14:00:00Z", "updatedAt": "2026-05-06T11:00:00Z",
+      "expiredAt": null
+    }
+  ],
+  "users": [
+    { "id": "u001", "name": "Nguyễn Văn Hùng", "role": "sales", "pos_id": 1, "pos_name": "POS Q.7 – Nhà Bè" },
+    { "id": "u002", "name": "Đinh Việt Anh", "role": "sales", "pos_id": 1, "pos_name": "POS Q.7 – Nhà Bè" },
+    { "id": "u003", "name": "Trần Thế Tùng", "role": "sales", "pos_id": 2, "pos_name": "POS Q.1 – Trung Tâm" },
+    { "id": "u004", "name": "Lê Đức Tài", "role": "sales", "pos_id": 2, "pos_name": "POS Q.1 – Trung Tâm" },
+    { "id": "u_pos1", "name": "Trần Hồng Oanh", "role": "pos_manager", "pos_id": 1, "pos_name": "POS Q.7 – Nhà Bè" },
+    { "id": "u_pos2", "name": "Hồng Bảo Quân", "role": "pos_manager", "pos_id": 2, "pos_name": "POS Q.1 – Trung Tâm" },
+    { "id": "u_mkt1", "name": "Nguyễn Thị MKT", "role": "marketing", "pos_id": null, "pos_name": "Marketing Dept." }
+  ],
+  "logs": [],
+  "notifications": [],
+  "status_history": [],
+  "$schema": "./node_modules/json-server/schema.json"
+}
