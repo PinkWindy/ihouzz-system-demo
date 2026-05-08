@@ -13,6 +13,14 @@ const maskAddress = (prop) => {
   return '*** (Bị ẩn — BR-013: không có quyền xem địa chỉ POS khác)';
 };
 
+// Hàm chuẩn hóa hiển thị ID (khắc phục lỗi thư viện gen UUID ngẫu nhiên)
+const formatLSId = (id) => {
+  if (!id) return '';
+  if (id.startsWith('LS-')) return id;
+  // Nếu là chuỗi random (vd: hadpkDyu4Sw), trích 5 ký tự đầu làm mã LS ảo cho đẹp UI
+  return `LS-${id.substring(0, 5).toUpperCase()}`;
+};
+
 const lv1Color = { 'Được duyệt':'success','Được đảm bảo':'warning','Chờ POS duyệt':'info','Bị từ chối':'danger','Đã gỡ nguồn':'dark','Chờ duyệt gỡ nguồn':'secondary','Chờ KH ký':'primary' };
 const lv2Color = { 'Đang niêm yết':'success','Chưa niêm yết':'secondary','Thẩm định phí':'info','Đã gỡ':'dark','Khởi tạo':'light' };
 
@@ -59,7 +67,7 @@ export default function Feature9_Warehouse() {
       <div className="d-flex justify-content-between align-items-start mb-4">
         <div>
           <h4 className="fw-bold mb-1" style={{ color: '#0d47a1' }}>
-            <i className="bi bi-graph-up me-2"></i>Feature 9 – Giám sát Kho hàng (UC010)
+            <i className="bi bi-graph-up me-2"></i>Feature 9 – Tra cứu & Giám sát Kho (UC010)
           </h4>
           <small className="text-muted">
             Role: <strong>{ROLE.toUpperCase()}</strong>
@@ -158,7 +166,7 @@ export default function Feature9_Warehouse() {
                     onClick={() => setSelected(isSelected ? null : p)}>
                     <div className="flex-grow-1">
                       <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                        <span className="badge bg-dark">{p.id}</span>
+                        <span className="badge bg-dark">{formatLSId(p.id)}</span>
                         <span className={`badge bg-${lv1Color[p.level1_status] || 'secondary'} ${p.level1_status === 'Được đảm bảo' ? 'text-dark' : ''}`}>{p.level1_status}</span>
                         <span className={`badge bg-${lv2Color[p.level2_status] || 'secondary'} ${p.level2_status === 'Khởi tạo' ? 'text-dark border' : ''}`}>{p.level2_status}</span>
                         {p.warehouse_type && <span className="badge bg-light text-dark border">{p.warehouse_type}</span>}
@@ -191,7 +199,7 @@ export default function Feature9_Warehouse() {
           <div className="col-md-5">
             <div className="card border-0 shadow-sm h-100">
               <div className="card-header border-0 bg-primary text-white d-flex justify-content-between align-items-center">
-                <span className="fw-bold"><i className="bi bi-building me-1"></i>{selected.id}</span>
+                <span className="fw-bold"><i className="bi bi-building me-1"></i>{formatLSId(selected.id)}</span>
                 <button className="btn-close btn-close-white btn-sm" onClick={() => setSelected(null)}></button>
               </div>
               <div className="card-body small" style={{ overflowY: 'auto', maxHeight: '60vh' }}>
