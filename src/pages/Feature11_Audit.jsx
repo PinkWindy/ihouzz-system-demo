@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { readSessionUser } from '../utils/listingWorkflow';
+
 const API = 'http://localhost:5000';
-const CURRENT_ROLE = localStorage.getItem('user_role') || 'admin';
 
 const ACTION_ICON = {
   'Tạo': { icon: 'bi-plus-circle-fill', color: '#1976d2' },
@@ -19,18 +20,19 @@ const getActionMeta = (action) => {
   return ACTION_ICON[key] || { icon: 'bi-dot', color: '#9e9e9e' };
 };
 
-function AccessGuard() {
+function AccessGuard({ role }) {
   return (
     <div className="d-flex flex-column align-items-center justify-content-center py-5">
       <i className="bi bi-shield-lock-fill fs-1 text-danger mb-3"></i>
       <h5 className="fw-bold text-danger">Truy cập bị từ chối</h5>
       <p className="text-muted">Chỉ <strong>Admin Tổng</strong> mới có quyền xem Audit Trail.</p>
-      <div className="badge bg-secondary mt-2">Role hiện tại: {CURRENT_ROLE.toUpperCase()}</div>
+      <div className="badge bg-secondary mt-2">Role hiện tại: {String(role || 'guest').toUpperCase()}</div>
     </div>
   );
 }
 
 export default function Feature11_Audit() {
+  const auditRole = readSessionUser().role;
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -42,9 +44,9 @@ export default function Feature11_Audit() {
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    if (CURRENT_ROLE !== 'admin') return;
+    if (auditRole !== 'admin') return;
     load();
-  }, []);
+  }, [auditRole]);
 
   const load = async () => {
     setLoading(true);
@@ -53,12 +55,12 @@ export default function Feature11_Audit() {
     setLoading(false);
   };
 
-  if (CURRENT_ROLE !== 'admin') return (
+  if (auditRole !== 'admin') return (
     <div className="p-4" style={{ background: '#fff0f0', minHeight: '100vh' }}>
       <h4 className="fw-bold mb-3 text-danger">
         <i className="bi bi-shield-lock me-2"></i>Feature 11 – Audit Trail (UC012)
       </h4>
-      <AccessGuard />
+      <AccessGuard role={auditRole} />
     </div>
   );
 

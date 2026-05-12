@@ -8,9 +8,14 @@ const UNLIST_REASONS = [
 ];
 
 export default function Feature6_Unlist() {
+  const userStr = localStorage.getItem('user');
+  const userObj = userStr ? JSON.parse(userStr) : {};
+  const role = userObj.role || '';
+  const ROLE = role === 'pos' ? 'pos_manager' : role === 'mkt' ? 'marketing' : role;
+
   const [listings, setListings] = useState([]);
   const [properties, setProperties] = useState([]);
-  const [tab, setTab] = useState('sales'); // 'sales' | 'admin'
+  const [tab, setTab] = useState(ROLE === 'admin' || ROLE === 'marketing' ? 'admin' : 'sales');
   const [selected, setSelected] = useState(null);
   const [unlistReason, setUnlistReason] = useState('');
   const [unlistNote, setUnlistNote] = useState('');
@@ -118,14 +123,20 @@ export default function Feature6_Unlist() {
 
       {/* Tab switch */}
       <div className="card border-0 shadow-sm mb-4">
-        <div className="card-body py-2 d-flex gap-2 align-items-center">
-          <button className={`btn ${tab === 'sales' ? 'btn-warning' : 'btn-outline-warning'}`} onClick={() => setTab('sales')}>
-            <i className="bi bi-person me-1"></i>Góc Đầu chủ – Gửi yêu cầu gỡ tin
-          </button>
-          <button className={`btn ${tab === 'admin' ? 'btn-danger' : 'btn-outline-danger'}`} onClick={() => setTab('admin')}>
-            <i className="bi bi-shield-check me-1"></i>Góc Admin/MKT – Duyệt yêu cầu
-            {unlistRequests.length > 0 && <span className="badge bg-light text-danger ms-1">{unlistRequests.length}</span>}
-          </button>
+        <div className="card-body py-2 d-flex gap-2 align-items-center flex-wrap">
+          {/* Tab Đầu chủ: Sales + Admin đều thấy */}
+          {(ROLE === 'sales' || ROLE === 'admin') && (
+            <button className={`btn ${tab === 'sales' ? 'btn-warning' : 'btn-outline-warning'}`} onClick={() => setTab('sales')}>
+              <i className="bi bi-person me-1"></i>Góc Đầu chủ – Gửi yêu cầu gỡ tin
+            </button>
+          )}
+          {/* Tab Admin/MKT: Admin + Marketing thấy */}
+          {(ROLE === 'admin' || ROLE === 'marketing') && (
+            <button className={`btn ${tab === 'admin' ? 'btn-danger' : 'btn-outline-danger'}`} onClick={() => setTab('admin')}>
+              <i className="bi bi-shield-check me-1"></i>Góc Admin/MKT – Duyệt yêu cầu
+              {unlistRequests.length > 0 && <span className="badge bg-light text-danger ms-1">{unlistRequests.length}</span>}
+            </button>
+          )}
           <button className="btn btn-outline-secondary ms-auto" onClick={() => setTab('br010')}>
             <i className="bi bi-shield-exclamation me-1"></i>Demo BR-010 (Gỡ nguồn bị chặn)
           </button>
@@ -142,37 +153,53 @@ export default function Feature6_Unlist() {
                 <span className="text-muted small ms-2 fw-normal">— Chọn tin để gửi yêu cầu gỡ (UC006)</span>
               </div>
               <div className="card-body p-0" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
-                {activeListing.length === 0 && (
-                  <div className="text-center py-5 text-muted"><i className="bi bi-inbox fs-2"></i><p className="mt-2">Không có tin đang niêm yết.</p></div>
-                )}
-                {activeListing.map(l => {
-                  const prop = getProp(l.property_id);
-                  const isSelected = selected?.id === l.id;
-                  return (
-                    <div key={l.id} className={`p-3 border-bottom ${isSelected ? 'bg-warning bg-opacity-10' : ''}`}
-                      style={{ cursor: 'pointer' }} onClick={() => { setSelected(l); setMode('request'); setUnlistReason(''); setUnlistNote(''); setBlockError(null); }}>
-                      <div className="d-flex align-items-center justify-content-between mb-1">
-                        <div>
-                          <span className="badge bg-dark me-1">{l.id}</span>
-                          <span className="badge bg-success">✅ Đang niêm yết</span>
-                          <span className={`badge ms-1 ${prop.type === 'Bán' ? 'bg-danger' : 'bg-info'}`}>{prop.type}</span>
-                        </div>
-                        <small className="text-muted">{l.approvedAt ? new Date(l.approvedAt).toLocaleDateString('vi-VN') : ''}</small>
-                      </div>
-                      <div className="fw-semibold small">{l.title}</div>
-                      <div className="text-muted small">📍 {prop.address}</div>
-                      <div className="text-muted small">
-                        <span className="me-2">💰 {prop.price_display}</span>
-                        <span>📐 {prop.area}m² | {prop.bedrooms}PN/{prop.bathrooms}WC</span>
-                      </div>
-                      {l.expiredAt && (
-                        <div className="small text-warning mt-1">
-                          ⏰ Hết hạn: {new Date(l.expiredAt).toLocaleDateString('vi-VN')}
-                        </div>
+                <div className="table-responsive">
+                  <table className="table table-hover align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
+                    <thead className="table-light sticky-top">
+                      <tr>
+                        <th className="small text-muted text-danger fw-bold"><i className="bi bi-alarm"></i> Hết hạn</th>
+                        <th className="small text-muted">Mã Bài Đăng</th>
+                        <th className="small text-muted">Mã TS (Địa chỉ)</th>
+                        <th className="small text-muted">Tiêu đề</th>
+                        <th className="small text-muted">Loại/Giá</th>
+                        <th className="small text-muted text-end">Lượt xem</th>
+                        <th className="small text-muted text-end">Lượt Like</th>
+                        <th className="small text-muted text-end">Hành động</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeListing.length === 0 && (
+                        <tr><td colSpan="8" className="text-center py-5 text-muted"><i className="bi bi-inbox fs-2"></i><p className="mt-2">Không có tin đang niêm yết.</p></td></tr>
                       )}
-                    </div>
-                  );
-                })}
+                      {activeListing.map(l => {
+                        const prop = getProp(l.property_id);
+                        const isSelected = selected?.id === l.id;
+                        const views = l.views || Math.floor(((l.id?.charCodeAt(0) || 65) * 12.5) + 100);
+                        const likes = l.likes || Math.floor(views * 0.15);
+                        return (
+                          <tr key={l.id} className={`${isSelected ? 'bg-warning bg-opacity-10' : ''}`} style={{ cursor: 'pointer' }} onClick={() => { setSelected(l); setMode('request'); setUnlistReason(''); setUnlistNote(''); setBlockError(null); }}>
+                            <td className="text-danger fw-bold">{l.expiredAt ? new Date(l.expiredAt).toLocaleDateString('vi-VN') : '—'}</td>
+                            <td><span className="badge bg-dark">{l.id}</span></td>
+                            <td>
+                              <div className="fw-semibold">{prop.id}</div>
+                              <div className="text-muted small" style={{ fontSize: 11, maxWidth: 150, textOverflow: 'ellipsis', overflow: 'hidden' }}>{prop.address}</div>
+                            </td>
+                            <td className="fw-semibold text-truncate" style={{ maxWidth: 150 }} title={l.title}>{l.title}</td>
+                            <td>
+                              <span className={`badge ${prop.type === 'Bán' ? 'bg-danger' : 'bg-info'}`}>{prop.type}</span>
+                              <div className="fw-bold small mt-1">{prop.price_display}</div>
+                            </td>
+                            <td className="text-end fw-semibold text-primary">{views} <i className="bi bi-eye"></i></td>
+                            <td className="text-end fw-semibold text-danger">{likes} <i className="bi bi-heart-fill"></i></td>
+                            <td className="text-end">
+                              <button className="btn btn-sm btn-outline-warning text-dark"><i className="bi bi-sign-stop me-1"></i>Gỡ tin</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
@@ -250,49 +277,55 @@ export default function Feature6_Unlist() {
             <span className="text-muted small ms-2 fw-normal">— Admin/MKT phê duyệt (UC007)</span>
           </div>
           <div className="card-body p-0">
-            {unlistRequests.length === 0 && (
-              <div className="text-center py-5 text-muted">
-                <i className="bi bi-inbox fs-2"></i><p className="mt-2">Không có yêu cầu gỡ tin nào đang chờ.</p>
-              </div>
-            )}
-            {unlistRequests.map(l => {
-              const prop = getProp(l.property_id);
-              const reason = UNLIST_REASONS.find(r => r.value === l.unlist_reason);
-              return (
-                <div key={l.id} className="p-4 border-bottom">
-                  <div className="row align-items-start">
-                    <div className="col-md-7">
-                      <div className="d-flex align-items-center gap-2 mb-2">
-                        <span className="badge bg-dark">{l.id}</span>
-                        <span className="badge bg-secondary">🔻 Yêu cầu gỡ tin</span>
-                        {reason && <span className="badge" style={{ background: '#ff6f00' }}>{reason.icon} {reason.label}</span>}
-                      </div>
-                      <div className="fw-semibold mb-1">{l.title}</div>
-                      <div className="text-muted small">📍 {prop.address}</div>
-                      <div className="text-muted small mb-2">Người yêu cầu: {l.createdBy} | POS: {prop.pos_name}</div>
-                      {l.unlist_note && (
-                        <div className="alert alert-light border py-2 small">
-                          <i className="bi bi-chat-left-text me-1"></i><strong>Ghi chú của Đầu chủ:</strong> {l.unlist_note}
-                        </div>
-                      )}
-                      {reason && (
-                        <div className="small text-muted">
-                          ▸ Nếu duyệt: Tài sản <strong>{prop.id}</strong> Level 2 sẽ → <span className="badge bg-secondary">"{reason.nextLv2}"</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="col-md-5 d-flex flex-column gap-2 mt-3 mt-md-0">
-                      <button className="btn btn-success" onClick={() => handleApproveUnlist(l)} disabled={submitting}>
-                        <i className="bi bi-check-circle me-1"></i>Duyệt Gỡ tin + AUTO-SYNC (BR-005)
-                      </button>
-                      <button className="btn btn-outline-danger" onClick={() => handleRejectUnlist(l)}>
-                        <i className="bi bi-x-circle me-1"></i>Từ chối – Giữ niêm yết
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            <div className="table-responsive">
+              <table className="table table-hover align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
+                <thead className="table-light sticky-top">
+                  <tr>
+                    <th className="small text-muted">Mã Bài Đăng / Mã TS</th>
+                    <th className="small text-muted">Tiêu đề</th>
+                    <th className="small text-muted">Người yêu cầu / POS</th>
+                    <th className="small text-muted">Lý do gỡ / Ghi chú</th>
+                    <th className="small text-muted text-end">Lượt xem</th>
+                    <th className="small text-muted text-end">Lượt Like</th>
+                    <th className="small text-muted text-end">Hành động duyệt</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unlistRequests.length === 0 && (
+                    <tr><td colSpan="7" className="text-center py-5 text-muted"><i className="bi bi-inbox fs-2"></i><p className="mt-2">Không có yêu cầu gỡ tin nào đang chờ.</p></td></tr>
+                  )}
+                  {unlistRequests.map(l => {
+                    const prop = getProp(l.property_id);
+                    const reason = UNLIST_REASONS.find(r => r.value === l.unlist_reason);
+                    const views = l.views || Math.floor(((l.id?.charCodeAt(0) || 65) * 12.5) + 100);
+                    const likes = l.likes || Math.floor(views * 0.15);
+                    return (
+                      <tr key={l.id}>
+                        <td>
+                          <div><span className="badge bg-dark">{l.id}</span></div>
+                          <div className="mt-1"><span className="badge bg-secondary">{prop.id}</span></div>
+                        </td>
+                        <td className="fw-semibold text-truncate" style={{ maxWidth: 200 }} title={l.title}>{l.title}</td>
+                        <td>
+                          <div>{l.createdBy}</div>
+                          <div className="text-muted small">{prop.pos_name}</div>
+                        </td>
+                        <td>
+                          {reason && <span className="badge" style={{ background: '#ff6f00' }}>{reason.icon} {reason.label}</span>}
+                          {l.unlist_note && <div className="text-muted small mt-1" style={{ maxWidth: 200, textOverflow: 'ellipsis', overflow: 'hidden' }}>{l.unlist_note}</div>}
+                        </td>
+                        <td className="text-end fw-semibold text-primary">{views} <i className="bi bi-eye"></i></td>
+                        <td className="text-end fw-semibold text-danger">{likes} <i className="bi bi-heart-fill"></i></td>
+                        <td className="text-end">
+                          <button className="btn btn-sm btn-success me-2" onClick={() => handleApproveUnlist(l)} disabled={submitting}>Duyệt Gỡ</button>
+                          <button className="btn btn-sm btn-outline-danger" onClick={() => handleRejectUnlist(l)} disabled={submitting}>Từ chối</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

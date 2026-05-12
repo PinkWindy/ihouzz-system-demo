@@ -92,10 +92,32 @@ export function hasPermission(role, permCode) {
   return (perms[role] || []).includes(permCode);
 }
 
-/** Kiểm tra có nên mask địa chỉ không */
-export function shouldMaskAddress(role, property, currentPosId) {
+/** So khớp POS giữa tài sản và user (id kiểu số/chuỗi + fallback theo tên POS). */
+export function isSamePosAsActor(property, actorPosId, actorPosName) {
+  if (!property || typeof property !== 'object') return false;
+  const pid = property.pos_id;
+  const aid = actorPosId;
+  if (pid != null && aid != null && pid !== '' && aid !== '') {
+    const pn = Number(pid);
+    const an = Number(aid);
+    if (!Number.isNaN(pn) && !Number.isNaN(an) && pn === an) return true;
+  }
+  const pn = property.pos_name != null ? String(property.pos_name).trim() : '';
+  const an = actorPosName != null ? String(actorPosName).trim() : '';
+  if (pn && an && pn === an) return true;
+  return false;
+}
+
+/**
+ * Có nên che địa chỉ không (BR-013).
+ * - Cùng POS với user → không che.
+ * - Có quyền PROPERTY_VIEW_ADDRESS_OTHER_POS → không che (xem toàn hệ thống).
+ * - Khác POS và không có quyền trên → che.
+ */
+export function shouldMaskAddress(role, property, currentPosId, currentPosName) {
   if (role === 'admin') return false;
-  if (!property.pos_id || property.pos_id === currentPosId) return false;
-  // Kiểm tra quyền động
-  return !hasPermission(role, 'PROPERTY_VIEW_ADDRESS_OTHER_POS');
+  if (isSamePosAsActor(property, currentPosId, currentPosName)) return false;
+  if (hasPermission(role, 'PROPERTY_VIEW_ADDRESS_OTHER_POS')) return false;
+  if (!property.pos_id && !property.pos_name) return false;
+  return true;
 }

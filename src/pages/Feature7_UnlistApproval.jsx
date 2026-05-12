@@ -216,89 +216,70 @@ export default function Feature7_UnlistApproval() {
       {/* TAB: PENDING */}
       {tab === 'pending' && (
         <div className="row g-3">
-          {pending.length === 0 && (
-            <div className="col-12">
-              <div className="card border-0 shadow-sm text-center py-5">
-                <i className="bi bi-inbox fs-1 text-muted"></i>
-                <p className="mt-3 text-muted">Không có yêu cầu gỡ tin nào đang chờ duyệt.</p>
+          <div className="col-12">
+            <div className="card border-0 shadow-sm p-0">
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
+                  <thead className="table-light sticky-top">
+                    <tr>
+                      <th className="small text-muted">STT</th>
+                      <th className="small text-muted">Mã Bài Đăng / Mã TS</th>
+                      <th className="small text-muted">Tiêu đề / Địa chỉ</th>
+                      <th className="small text-muted">Thông tin nguồn</th>
+                      <th className="small text-muted">Lý do gỡ / Ghi chú</th>
+                      <th className="small text-muted text-end">Lượt xem</th>
+                      <th className="small text-muted text-end">Lượt Like</th>
+                      <th className="small text-muted text-center">Trạng thái Lv2</th>
+                      <th className="small text-muted text-end">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pending.length === 0 && (
+                      <tr><td colSpan="9" className="text-center py-5 text-muted"><i className="bi bi-inbox fs-2"></i><p className="mt-2">Không có yêu cầu gỡ tin nào đang chờ duyệt.</p></td></tr>
+                    )}
+                    {pending.map((l, idx) => {
+                      const prop = getProp(l.property_id);
+                      const reasonObj = UNLIST_REASONS.find(r => r.value === l.unlist_reason);
+                      const isSelected = selected?.id === l.id;
+                      const views = l.views || Math.floor(((l.id?.charCodeAt(0) || 65) * 12.5) + 100);
+                      const likes = l.likes || Math.floor(views * 0.15);
+                      return (
+                        <tr key={l.id} className={isSelected ? 'bg-primary bg-opacity-10 border-start border-primary border-4' : ''}>
+                          <td className="fw-bold">#{idx + 1}</td>
+                          <td>
+                            <div><span className="badge bg-dark">{l.id}</span></div>
+                            <div className="mt-1"><span className="badge bg-secondary">{prop.id}</span></div>
+                          </td>
+                          <td>
+                            <div className="fw-semibold text-truncate" style={{ maxWidth: 200 }} title={l.title}>{l.title}</div>
+                            <div className="text-muted small text-truncate" style={{ maxWidth: 200 }}>{prop.address}</div>
+                          </td>
+                          <td>
+                            <div><i className="bi bi-building me-1 text-muted"></i>{prop.pos_name}</div>
+                            <div className="small"><i className="bi bi-person me-1 text-muted"></i>{l.createdBy}</div>
+                          </td>
+                          <td>
+                            {reasonObj && <span className={`badge bg-${reasonObj.color} text-dark`}>{reasonObj.icon} {reasonObj.label}</span>}
+                            {l.unlist_note && <div className="text-muted small mt-1 text-truncate" style={{ maxWidth: 150 }}>{l.unlist_note}</div>}
+                          </td>
+                          <td className="text-end fw-semibold text-primary">{views} <i className="bi bi-eye"></i></td>
+                          <td className="text-end fw-semibold text-danger">{likes} <i className="bi bi-heart-fill"></i></td>
+                          <td className="text-center">
+                            <StatusBadge lv2={prop.level2_status} />
+                            <div className="small text-muted mt-1">{prop.type} · {prop.price_display}</div>
+                          </td>
+                          <td className="text-end">
+                            <button className="btn btn-sm btn-success mb-1 w-100" onClick={() => { setSelected(l); setModalMode('approve'); }}>Duyệt Gỡ</button>
+                            <button className="btn btn-sm btn-outline-danger w-100" onClick={() => { setSelected(l); setModalMode('reject'); setRejectReason(''); setRejectNote(''); }}>Từ chối</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
-          )}
-          {pending.map((l, idx) => {
-            const prop = getProp(l.property_id);
-            const reasonObj = UNLIST_REASONS.find(r => r.value === l.unlist_reason);
-            const isSelected = selected?.id === l.id;
-            return (
-              <div key={l.id} className="col-12">
-                <div className={`card border-0 shadow-sm ${isSelected ? 'border-start border-primary border-4' : ''}`}
-                  style={{ transition: '0.2s' }}>
-                  <div className="card-body">
-                    <div className="row align-items-center">
-                      {/* FIFO badge */}
-                      <div className="col-auto">
-                        <div className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold"
-                          style={{ width: 36, height: 36, fontSize: 14 }}>#{idx + 1}</div>
-                      </div>
-
-                      <div className="col-md-6">
-                        <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                          <span className="badge bg-dark">{l.id}</span>
-                          <span className="badge bg-secondary">{prop.id}</span>
-                          {reasonObj && (
-                            <span className={`badge bg-${reasonObj.color} text-dark`}>
-                              {reasonObj.icon} {reasonObj.label}
-                            </span>
-                          )}
-                        </div>
-                        <div className="fw-semibold mb-1">{l.title}</div>
-                        <div className="text-muted small">
-                          <i className="bi bi-geo-alt me-1"></i>{prop.address}
-                        </div>
-                        <div className="text-muted small">
-                          <span className="me-3"><i className="bi bi-building me-1"></i>{prop.pos_name}</span>
-                          <span><i className="bi bi-person me-1"></i>{l.createdBy}</span>
-                          <span className="ms-3"><i className="bi bi-clock me-1"></i>
-                            {l.unlistRequestedAt ? new Date(l.unlistRequestedAt).toLocaleString('vi-VN') : ''}
-                          </span>
-                        </div>
-                        {l.unlist_note && (
-                          <div className="alert alert-light border py-1 px-2 small mt-2 mb-0">
-                            <i className="bi bi-chat-left-dots me-1"></i>
-                            <strong>Ghi chú:</strong> {l.unlist_note}
-                          </div>
-                        )}
-                        {reasonObj && (
-                          <div className="small text-muted mt-1">
-                            <i className="bi bi-arrow-right me-1"></i>
-                            Nếu duyệt: Tài sản <strong>{prop.id}</strong> Level 2 →{' '}
-                            <span className="badge bg-secondary">"{reasonObj.nextLv2}"</span> (BR-005)
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="col-md-2 text-center">
-                        <div className="small text-muted mb-1">Level 2 hiện tại</div>
-                        <StatusBadge lv2={prop.level2_status} />
-                        <div className="small text-muted mt-2">{prop.type} · {prop.area}m²</div>
-                        <div className="small fw-semibold">{prop.price_display}</div>
-                      </div>
-
-                      <div className="col-md-3 d-flex flex-column gap-2">
-                        <button className="btn btn-success fw-semibold"
-                          onClick={() => { setSelected(l); setModalMode('approve'); }}>
-                          <i className="bi bi-check-circle me-1"></i>Duyệt gỡ tin
-                        </button>
-                        <button className="btn btn-outline-danger"
-                          onClick={() => { setSelected(l); setModalMode('reject'); setRejectReason(''); setRejectNote(''); }}>
-                          <i className="bi bi-x-circle me-1"></i>Từ chối
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          </div>
         </div>
       )}
 

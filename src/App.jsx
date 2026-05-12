@@ -13,14 +13,24 @@ import Feature8_Unsource from './pages/Feature8_Unsource';
 import Feature9_Warehouse from './pages/Feature9_Warehouse';
 import Feature10_IAM from './pages/Feature10_IAM';
 import Feature11_Audit from './pages/Feature11_Audit';
+import Feature12_Dashboard from './pages/Feature12_Dashboard';
+import { hasPermission } from './utils/permissions';
 
 function DashboardLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const role = localStorage.getItem('user_role') || 'guest';
+  const userStr = localStorage.getItem('user');
+  const userObj2 = userStr ? JSON.parse(userStr) : {};
+  let role = userObj2.role || localStorage.getItem('user_role') || 'guest';
+  if (role === 'pos') role = 'pos_manager';
+  if (role === 'mkt') role = 'marketing';
+  const displayName = userObj2.name || `${role}@ihouzz.com`;
+  const displayEmail = userObj2.email || `${role}@ihouzz.com`;
 
   const handleLogout = () => {
     localStorage.removeItem('user_role');
+    localStorage.removeItem('user');
+    localStorage.removeItem('pos_name');
     navigate('/login');
   };
 
@@ -34,7 +44,7 @@ function DashboardLayout({ children }) {
           <div className="d-flex align-items-center gap-2 mb-2">
             <i className="bi bi-person-circle fs-4"></i>
             <div>
-              <div className="fw-semibold">{role}@ihouzz.com</div>
+              <div className="fw-semibold" style={{ fontSize: 13 }}>{displayEmail}</div>
               <div className="badge bg-success">Role: {role.toUpperCase()}</div>
             </div>
           </div>
@@ -44,40 +54,73 @@ function DashboardLayout({ children }) {
         <div className="small text-muted text-uppercase fw-bold mb-2">Điều hướng (Theo SRS)</div>
         <div className="list-group list-group-flush rounded-0 bg-transparent">
           <Link to="/dashboard" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/dashboard' ? 'active fw-bold' : ''}`}>
-            <i className="bi bi-house-door me-2"></i> Tổng quan
+            <i className="bi bi-pie-chart-fill me-2"></i> F12: Báo Cáo Tổng Hợp
           </Link>
-          <Link to="/feature2" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature2' ? 'active fw-bold' : ''}`}>
-            <i className="bi bi-plus-square me-2"></i> F2: Tạo tài sản
-          </Link>
-          <Link to="/feature3" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature3' ? 'active fw-bold' : ''}`}>
-            <i className="bi bi-check2-square me-2"></i> F3: GĐ POS Duyệt Kho
-          </Link>
-          <Link to="/feature4" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature4' ? 'active fw-bold' : ''}`}>
-            <i className="bi bi-megaphone me-2"></i> F4: Soạn Tin Đăng
-          </Link>
-          <Link to="/feature5" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature5' ? 'active fw-bold' : ''}`}>
-            <i className="bi bi-patch-check me-2"></i> F5: MKT Duyệt Niêm yết
-          </Link>
-          <Link to="/feature6" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature6' ? 'active fw-bold' : ''}`}>
-            <i className="bi bi-sign-stop me-2"></i> F6: Gỡ tin
-          </Link>
-          <Link to="/feature7" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature7' ? 'active fw-bold' : ''}`}>
-            <i className="bi bi-patch-check me-2"></i> F7: Duyệt Gỡ tin
-          </Link>
-          <Link to="/feature8" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature8' ? 'active fw-bold' : ''}`}>
-            <i className="bi bi-x-octagon me-2"></i> F8: Gỡ nguồn
-          </Link>
+          {/* Menu F2 */}
+          {(role === 'admin' || (role === 'sales' && hasPermission(role, 'PROPERTY_CREATE'))) && (
+            <Link to="/feature2" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature2' ? 'active fw-bold' : ''}`}>
+              <i className="bi bi-plus-square me-2"></i> F2: Tạo tài sản
+            </Link>
+          )}
+          {/* Menu F3 */}
+          {(role === 'admin' || role === 'pos_manager') && (
+            <Link to="/feature3" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature3' ? 'active fw-bold' : ''}`}>
+              <i className="bi bi-check2-square me-2"></i> F3: GĐ POS Duyệt Kho
+            </Link>
+          )}
+          {/* Menu F4 */}
+          {(role === 'admin' || (role === 'sales' && hasPermission(role, 'LISTING_CREATE'))) && (
+            <Link to="/feature4" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature4' ? 'active fw-bold' : ''}`}>
+              <i className="bi bi-megaphone me-2"></i> F4: Soạn tin & gửi duyệt (UC004)
+            </Link>
+          )}
+          {/* Menu F5 — Admin+MKT duyệt, Sales chỉ xem */}
+          {(role === 'admin' || role === 'marketing' || role === 'sales') && (
+            <Link to="/feature5" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature5' ? 'active fw-bold' : ''}`}>
+              <i className="bi bi-patch-check me-2"></i> F5: Trung tâm duyệt niêm yết (UC005)
+            </Link>
+          )}
+          {/* Menu F6 */}
+          {(role === 'admin' || role === 'sales') && (
+            <Link to="/feature6" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature6' ? 'active fw-bold' : ''}`}>
+              <i className="bi bi-sign-stop me-2"></i> F6: Gỡ tin
+            </Link>
+          )}
+          {/* Menu F7 */}
+          {(role === 'admin' || role === 'marketing') && (
+            <Link to="/feature7" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature7' ? 'active fw-bold' : ''}`}>
+              <i className="bi bi-patch-check me-2"></i> F7: Duyệt Gỡ tin
+            </Link>
+          )}
+          {/* Menu F8 */}
+          {(role === 'admin' || role === 'sales' || role === 'pos_manager') && (
+            <Link to="/feature8" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature8' ? 'active fw-bold' : ''}`}>
+              <i className="bi bi-x-octagon me-2"></i> F8: Gỡ nguồn
+            </Link>
+          )}
 
-          <div className="mt-3 mb-2 small text-muted text-uppercase fw-bold">Quản trị</div>
-          <Link to="/feature9" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature9' ? 'active fw-bold' : ''}`}>
-            <i className="bi bi-graph-up me-2"></i> F9: Giám sát Kho
-          </Link>
-          <Link to="/feature10" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature10' ? 'active fw-bold' : ''}`}>
-            <i className="bi bi-people me-2"></i> F10: IAM & POS
-          </Link>
-          <Link to="/feature11" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature11' ? 'active fw-bold' : ''}`}>
-            <i className="bi bi-journal-text me-2"></i> F11: Audit Trail
-          </Link>
+          {/* Quản trị */}
+          {(role === 'admin' || role === 'pos_manager' || role === 'marketing' || role === 'sales') && (
+            <>
+              <div className="mt-3 mb-2 small text-muted text-uppercase fw-bold">Quản trị</div>
+              {/* F9: Tất cả role đều thấy */}
+              {(role === 'admin' || hasPermission(role, 'PROPERTY_VIEW_LIST')) && (
+              <Link to="/feature9" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature9' ? 'active fw-bold' : ''}`}>
+                <i className="bi bi-graph-up me-2"></i> F9: Giám sát Kho
+              </Link>
+              )}
+              {(role === 'admin' || role === 'pos_manager') && (
+                <Link to="/feature10" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature10' ? 'active fw-bold' : ''}`}>
+                  <i className="bi bi-people me-2"></i> F10: IAM & POS
+                </Link>
+              )}
+              {role === 'admin' && (
+                <Link to="/feature11" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature11' ? 'active fw-bold' : ''}`}>
+                  <i className="bi bi-journal-text me-2"></i> F11: Audit Trail
+                </Link>
+              )}
+            </>
+          )}
 
           <div className="mt-4 mb-2 small text-muted text-uppercase fw-bold">Legacy Demo</div>
           <Link to="/sales" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/sales' ? 'active' : ''}`}>
@@ -90,45 +133,22 @@ function DashboardLayout({ children }) {
       </div>
       
       {/* Main Content */}
-      <div className="flex-grow-1 bg-light">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function DashboardHome() {
-  return (
-    <div className="p-4">
-      <h3 className="fw-bold mb-4">Dashboard Tổng Quan (FR1-004)</h3>
-      <div className="alert alert-success">
-        ✅ Bạn đã đăng nhập thành công qua hệ thống MFA (Feature 1).<br/>
-        Từ Menu bên trái, bạn có thể truy cập các màn hình nghiệp vụ khác (Feature 2 đến 11).
-      </div>
-      <div className="row mt-4 g-3">
-        {[
-          { to:'/feature2', label:'F2: Tạo Tài sản', desc:'Sales tạo LS-, kiểm tra trùng địa chỉ, chọn 3 nhánh gửi duyệt.', color:'primary', icon:'bi-plus-square' },
-          { to:'/feature3', label:'F3: GĐ POS Duyệt Kho', desc:'GĐ POS duyệt vào Kho chuẩn / Kho đảm bảo hoặc từ chối.', color:'success', icon:'bi-check2-square' },
-          { to:'/feature4', label:'F4: Soạn Tin Đăng', desc:'Sales soạn tin từ tài sản đã duyệt. Auto-fill + Preview.', color:'info', icon:'bi-megaphone' },
-          { to:'/feature5', label:'F5: MKT Duyệt Niêm yết', desc:'MKT duyệt/từ chối. AUTO-SYNC Level 2 → Đang niêm yết (BR-003).', color:'warning', icon:'bi-patch-check' },
-          { to:'/feature6', label:'F6: Gỡ tin', desc:'Sales gửi yêu cầu gỡ tin (UC006). Admin duyệt AUTO-SYNC (UC007, BR-005, BR-010).', color:'danger', icon:'bi-sign-stop' },
-          { to:'/feature7', label:'F7: Duyệt Gỡ tin', desc:'MKT/Admin phê duyệt yêu cầu gỡ tin (UC007). FIFO, filter, audit log, reject với lý do.', color:'warning', icon:'bi-patch-check' },
-          { to:'/feature8', label:'F8: Gỡ nguồn', desc:'UC008: Đầu chủ gửi yêu cầu gỡ nguồn. UC009: GĐ POS phê duyệt. BR-010 block khi đang niêm yết.', color:'dark', icon:'bi-x-octagon' },
-          { to:'/feature9', label:'F9: Giám sát Kho', desc:'UC010: Dashboard kho tổng hợp, lọc, masking địa chỉ BR-013, timeline tài sản.', color:'primary', icon:'bi-graph-up' },
-          { to:'/feature10', label:'F10: IAM & POS', desc:'UC011+UC013: Quản trị nhân sự, khóa/mở khóa, vong đời tài khoản, cấu hình POS.', color:'success', icon:'bi-people' },
-          { to:'/feature11', label:'F11: Audit Trail', desc:'UC012: Nhật ký vận hành bất biến, chỉ Admin đọc, timeline, export CSV tự tạo log.', color:'secondary', icon:'bi-journal-text' },
-        ].map(f => (
-          <div key={f.to} className="col-md-4">
-            <div className={`card p-4 border-${f.color} border-2 shadow-sm h-100`}>
-              <div className={`d-flex align-items-center gap-2 mb-2 text-${f.color}`}>
-                <i className={`bi ${f.icon} fs-4`}></i>
-                <h5 className="fw-bold mb-0">{f.label}</h5>
-              </div>
-              <p className="text-muted small">{f.desc}</p>
-              <Link to={f.to} className={`btn btn-${f.color} mt-auto`}>Mở {f.label}</Link>
-            </div>
+      <div className="flex-grow-1 bg-light d-flex flex-column" style={{ height: '100vh', overflow: 'hidden' }}>
+        {/* Top Navbar */}
+        <div className="bg-white border-bottom px-4 py-2 d-flex justify-content-end align-items-center shadow-sm" style={{ height: '60px' }}>
+          <div className="text-end">
+            <div className="fw-bold text-primary">{userObj2.name || 'User'}</div>
+            <div className="small text-muted"><i className="bi bi-geo-alt-fill me-1 text-danger"></i>{userObj2.pos_name || (role === 'admin' ? 'Toàn quyền hệ thống' : 'Marketing Dept.')}</div>
           </div>
-        ))}
+          <div className="ms-3 rounded-circle bg-primary bg-gradient text-white d-flex align-items-center justify-content-center fw-bold shadow" style={{ width: 42, height: 42, fontSize: 18, border: '2px solid #fff' }}>
+            {(userObj2.name || 'U')[0].toUpperCase()}
+          </div>
+        </div>
+        
+        {/* Content Area */}
+        <div className="flex-grow-1" style={{ overflowY: 'auto' }}>
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -140,7 +160,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Feature1_Login />} />
-        <Route path="/dashboard" element={<DashboardLayout><DashboardHome /></DashboardLayout>} />
+        <Route path="/dashboard" element={<DashboardLayout><Feature12_Dashboard /></DashboardLayout>} />
         <Route path="/feature2" element={<DashboardLayout><Feature2_Create /></DashboardLayout>} />
         <Route path="/feature3" element={<DashboardLayout><Feature3_Approval /></DashboardLayout>} />
         <Route path="/feature4" element={<DashboardLayout><Feature4_CreateListing /></DashboardLayout>} />

@@ -20,10 +20,15 @@
       "createdBy": "Nguyễn Văn Hùng",
       "createdBy_id": "u001",
       "pos_id": 1,
-      "pos_name": "POS Q.7 – Nhà Bè",
-      "pos_manager": "Trần Hồng Oanh",
+      "pos_name": "POS Q1",
+      "pos_manager": "Hồng Bảo Quân",
       "createdAt": "2026-04-10T08:00:00Z",
-      "updatedAt": "2026-05-01T10:00:00Z"
+      "updatedAt": "2026-05-01T10:00:00Z",
+      "condition": "Cần cải tạo",
+      "source": "Dự án",
+      "furniture": "Cơ bản",
+      "floor": 2,
+      "priceUnit": "VNĐ"
     },
     {
       "id": "LS-00002",
@@ -39,16 +44,27 @@
       "direction": "Tây Nam",
       "road_width": "10m (xe hơi)",
       "legal": "Hợp đồng thuê",
-      "level1_status": "Chờ POS duyệt",
-      "level2_status": "Khởi tạo",
-      "warehouse_type": null,
+      "level1_status": "Đã gỡ nguồn",
+      "level2_status": "Đã gỡ nguồn",
+      "warehouse_type": "Kho chuẩn",
       "createdBy": "Nguyễn Văn Hùng",
       "createdBy_id": "u001",
       "pos_id": 1,
-      "pos_name": "POS Q.7 – Nhà Bè",
-      "pos_manager": "Trần Hồng Oanh",
+      "pos_name": "POS Q1",
+      "pos_manager": "Hồng Bảo Quân",
       "createdAt": "2026-05-05T09:00:00Z",
-      "updatedAt": "2026-05-05T09:00:00Z"
+      "updatedAt": "2026-05-11T15:58:30.396Z",
+      "condition": "Nhà mới",
+      "source": "Dự án",
+      "furniture": "Cơ bản",
+      "floor": 21,
+      "priceUnit": "VNĐ",
+      "approved_at": "2026-05-11T13:11:11.271Z",
+      "unsource_note": "Khach khong muon ban nua",
+      "unsourceRequestedAt": "2026-05-11T13:45:54.675Z",
+      "unsourceRequestedBy": "Admin iHouzz",
+      "unsourceApprovedBy": "Hồng Bảo Quân",
+      "unsourceApprovedAt": "2026-05-11T15:58:30.396Z"
     },
     {
       "id": "LS-00003",
@@ -68,13 +84,21 @@
       "level2_status": "Khởi tạo",
       "warehouse_type": null,
       "rejection_reason": "Hồ sơ pháp lý chưa đầy đủ. Cần bổ sung GCN quyền sử dụng đất.",
+      "images": [
+        "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80"
+      ],
       "createdBy": "Nguyễn Văn Hùng",
       "createdBy_id": "u001",
       "pos_id": 1,
-      "pos_name": "POS Q.7 – Nhà Bè",
-      "pos_manager": "Trần Hồng Oanh",
+      "pos_name": "POS Q1",
+      "pos_manager": "Hồng Bảo Quân",
       "createdAt": "2026-04-20T10:00:00Z",
-      "updatedAt": "2026-05-02T14:00:00Z"
+      "updatedAt": "2026-05-02T14:00:00Z",
+      "condition": "Cần cải tạo",
+      "source": "Cá nhân",
+      "furniture": "Nhà trống",
+      "floor": 20,
+      "priceUnit": "VNĐ"
     },
     {
       "id": "LS-00004",
@@ -95,13 +119,18 @@
       "warehouse_type": "Kho chuẩn",
       "createdBy": "Đinh Việt Anh",
       "createdBy_id": "u002",
-      "pos_id": 1,
-      "pos_name": "POS Q.7 – Nhà Bè",
+      "pos_id": 3,
+      "pos_name": "POS Q.5",
       "pos_manager": "Trần Hồng Oanh",
       "approvedAt": "2026-05-01T11:00:00Z",
       "approvedBy": "Trần Hồng Oanh",
       "createdAt": "2026-04-28T08:00:00Z",
-      "updatedAt": "2026-05-01T11:00:00Z"
+      "updatedAt": "2026-05-01T11:00:00Z",
+      "condition": "Nhà mới",
+      "source": "Cá nhân",
+      "furniture": "Đầy đủ",
+      "floor": 14,
+      "priceUnit": "VNĐ"
     },
     {
       "id": "LS-00005",
@@ -122,13 +151,18 @@
       "warehouse_type": "Kho đảm bảo",
       "createdBy": "Đinh Việt Anh",
       "createdBy_id": "u002",
-      "pos_id": 1,
-      "pos_name": "POS Q.7 – Nhà Bè",
+      "pos_id": 3,
+      "pos_name": "POS Q.5",
       "pos_manager": "Trần Hồng Oanh",
       "approvedAt": "2026-05-02T09:00:00Z",
       "approvedBy": "Trần Hồng Oanh",
       "createdAt": "2026-04-29T10:00:00Z",
-      "updatedAt": "2026-05-02T09:00:00Z"
+      "updatedAt": "2026-05-02T09:00:00Z",
+      "condition": "Cần cải tạo",
+      "source": "Cá nhân",
+      "furniture": "Nhà trống",
+      "floor": 2,
+      "priceUnit": "VNĐ"
     },
     {
       "id": "LS-00006",
@@ -149,13 +183,18 @@
       "warehouse_type": "Kho chuẩn",
       "createdBy": "Đinh Việt Anh",
       "createdBy_id": "u002",
-      "pos_id": 1,
-      "pos_name": "POS Q.7 – Nhà Bè",
+      "pos_id": 3,
+      "pos_name": "POS Q.5",
       "pos_manager": "Trần Hồng Oanh",
       "approvedAt": "2026-04-25T10:00:00Z",
       "approvedBy": "Trần Hồng Oanh",
       "createdAt": "2026-04-22T08:00:00Z",
-      "updatedAt": "2026-05-03T15:00:00Z"
+      "updatedAt": "2026-05-03T15:00:00Z",
+      "condition": "Đang sử dụng",
+      "source": "Chuyển nhượng",
+      "furniture": "Đầy đủ",
+      "floor": 28,
+      "priceUnit": "VNĐ"
     },
     {
       "id": "LS-00007",
@@ -176,13 +215,18 @@
       "warehouse_type": "Kho đảm bảo",
       "createdBy": "Đinh Việt Anh",
       "createdBy_id": "u002",
-      "pos_id": 1,
-      "pos_name": "POS Q.7 – Nhà Bè",
+      "pos_id": 3,
+      "pos_name": "POS Q.5",
       "pos_manager": "Trần Hồng Oanh",
       "approvedAt": "2026-04-26T11:00:00Z",
       "approvedBy": "Trần Hồng Oanh",
       "createdAt": "2026-04-23T09:00:00Z",
-      "updatedAt": "2026-05-04T10:00:00Z"
+      "updatedAt": "2026-05-12T04:22:13.855Z",
+      "condition": "Đang sử dụng",
+      "source": "Chuyển nhượng",
+      "furniture": "Nhà trống",
+      "floor": 19,
+      "priceUnit": "VNĐ"
     },
     {
       "id": "LS-00008",
@@ -203,13 +247,18 @@
       "warehouse_type": "Kho chuẩn",
       "createdBy": "Đinh Việt Anh",
       "createdBy_id": "u002",
-      "pos_id": 1,
-      "pos_name": "POS Q.7 – Nhà Bè",
+      "pos_id": 3,
+      "pos_name": "POS Q.5",
       "pos_manager": "Trần Hồng Oanh",
       "approvedAt": "2026-05-03T09:00:00Z",
       "approvedBy": "Trần Hồng Oanh",
       "createdAt": "2026-05-01T08:00:00Z",
-      "updatedAt": "2026-05-03T09:00:00Z"
+      "updatedAt": "2026-05-03T09:00:00Z",
+      "condition": "Đang sử dụng",
+      "source": "Dự án",
+      "furniture": "Đầy đủ",
+      "floor": 29,
+      "priceUnit": "VNĐ"
     },
     {
       "id": "LS-00009",
@@ -226,17 +275,22 @@
       "road_width": "10m",
       "legal": "Sổ hồng riêng",
       "level1_status": "Được duyệt",
-      "level2_status": "Đang niêm yết",
+      "level2_status": "Chưa niêm yết",
       "warehouse_type": "Kho chuẩn",
       "createdBy": "Trần Thế Tùng",
       "createdBy_id": "u003",
-      "pos_id": 2,
-      "pos_name": "POS Q.1 – Trung Tâm",
+      "pos_id": 1,
+      "pos_name": "POS Q1",
       "pos_manager": "Hồng Bảo Quân",
       "approvedAt": "2026-04-28T14:00:00Z",
       "approvedBy": "Hồng Bảo Quân",
       "createdAt": "2026-04-25T10:00:00Z",
-      "updatedAt": "2026-05-05T09:00:00Z"
+      "updatedAt": "2026-05-08T18:53:12.414Z",
+      "condition": "Đang sử dụng",
+      "source": "Cá nhân",
+      "furniture": "Cơ bản",
+      "floor": 7,
+      "priceUnit": "VNĐ"
     },
     {
       "id": "LS-00010",
@@ -257,13 +311,18 @@
       "warehouse_type": "Kho đảm bảo",
       "createdBy": "Trần Thế Tùng",
       "createdBy_id": "u003",
-      "pos_id": 2,
-      "pos_name": "POS Q.1 – Trung Tâm",
+      "pos_id": 1,
+      "pos_name": "POS Q1",
       "pos_manager": "Hồng Bảo Quân",
       "approvedAt": "2026-04-30T10:00:00Z",
       "approvedBy": "Hồng Bảo Quân",
       "createdAt": "2026-04-27T11:00:00Z",
-      "updatedAt": "2026-05-06T08:00:00Z"
+      "updatedAt": "2026-05-06T08:00:00Z",
+      "condition": "Cần cải tạo",
+      "source": "Dự án",
+      "furniture": "Nhà trống",
+      "floor": 25,
+      "priceUnit": "VNĐ"
     },
     {
       "id": "LS-00011",
@@ -279,16 +338,22 @@
       "direction": "Đông Nam",
       "road_width": "Đường nội khu",
       "legal": "Sổ hồng riêng",
-      "level1_status": "Chờ duyệt đảm bảo",
-      "level2_status": "Khởi tạo",
-      "warehouse_type": null,
+      "level1_status": "Được đảm bảo",
+      "level2_status": "Chưa niêm yết",
+      "warehouse_type": "Kho đảm bảo",
       "createdBy": "Lê Đức Tài",
       "createdBy_id": "u004",
       "pos_id": 2,
-      "pos_name": "POS Q.1 – Trung Tâm",
+      "pos_name": "POS Q1",
       "pos_manager": "Hồng Bảo Quân",
       "createdAt": "2026-05-05T14:00:00Z",
-      "updatedAt": "2026-05-05T14:00:00Z"
+      "updatedAt": "2026-05-05T14:00:00Z",
+      "condition": "Cần cải tạo",
+      "source": "Chuyển nhượng",
+      "furniture": "Cơ bản",
+      "floor": 25,
+      "priceUnit": "VNĐ",
+      "approved_at": "2026-05-11T13:11:45.354Z"
     },
     {
       "id": "LS-00012",
@@ -310,12 +375,17 @@
       "createdBy": "Lê Đức Tài",
       "createdBy_id": "u004",
       "pos_id": 2,
-      "pos_name": "POS Q.1 – Trung Tâm",
+      "pos_name": "POS Q1",
       "pos_manager": "Hồng Bảo Quân",
       "approvedAt": "2026-05-04T10:00:00Z",
       "approvedBy": "Hồng Bảo Quân",
       "createdAt": "2026-05-02T09:00:00Z",
-      "updatedAt": "2026-05-04T10:00:00Z"
+      "updatedAt": "2026-05-04T10:00:00Z",
+      "condition": "Cần cải tạo",
+      "source": "Chuyển nhượng",
+      "furniture": "Đầy đủ",
+      "floor": 21,
+      "priceUnit": "VNĐ"
     },
     {
       "id": "LS-00013",
@@ -332,17 +402,30 @@
       "road_width": "Đường nội khu",
       "legal": "Sổ hồng riêng",
       "level1_status": "Được đảm bảo",
-      "level2_status": "Đang niêm yết",
+      "level2_status": "Chờ chỉnh sửa",
       "warehouse_type": "Kho đảm bảo",
       "createdBy": "Lê Đức Tài",
       "createdBy_id": "u004",
       "pos_id": 2,
-      "pos_name": "POS Q.1 – Trung Tâm",
+      "pos_name": "POS Q1",
       "pos_manager": "Hồng Bảo Quân",
       "approvedAt": "2026-04-29T11:00:00Z",
       "approvedBy": "Hồng Bảo Quân",
       "createdAt": "2026-04-26T10:00:00Z",
-      "updatedAt": "2026-05-05T16:00:00Z"
+      "updatedAt": "2026-05-05T16:00:00Z",
+      "condition": "Đang sử dụng",
+      "source": "Chuyển nhượng",
+      "furniture": "Đầy đủ",
+      "floor": 22,
+      "priceUnit": "VNĐ",
+      "propertyType": "Căn hộ chung cư",
+      "legalStatus": "Sổ hồng riêng",
+      "description": "Căn góc view sông, nội thất cao cấp.",
+      "images": [
+        "https://picsum.photos/seed/ihz-LS13-a/1200/800",
+        "https://picsum.photos/seed/ihz-LS13-b/1200/800",
+        "https://picsum.photos/seed/ihz-LS13-c/1200/800"
+      ]
     },
     {
       "id": "LS-00014",
@@ -359,25 +442,36 @@
       "road_width": "Đường nội khu",
       "legal": "Hợp đồng thuê",
       "level1_status": "Được duyệt",
-      "level2_status": "Đang niêm yết",
+      "level2_status": "Chờ duyệt chỉnh sửa",
       "warehouse_type": "Kho chuẩn",
       "createdBy": "Lê Đức Tài",
       "createdBy_id": "u004",
       "pos_id": 2,
-      "pos_name": "POS Q.1 – Trung Tâm",
+      "pos_name": "POS Q1",
       "pos_manager": "Hồng Bảo Quân",
       "approvedAt": "2026-04-30T14:00:00Z",
       "approvedBy": "Hồng Bảo Quân",
       "createdAt": "2026-04-28T09:00:00Z",
-      "updatedAt": "2026-05-06T10:00:00Z"
+      "updatedAt": "2026-05-06T10:00:00Z",
+      "condition": "Cần cải tạo",
+      "source": "Dự án",
+      "furniture": "Nhà trống",
+      "floor": 28,
+      "priceUnit": "VNĐ",
+      "propertyType": "Căn hộ chung cư",
+      "images": [
+        "https://picsum.photos/seed/ihz-LS14-a/1200/800",
+        "https://picsum.photos/seed/ihz-LS14-b/1200/800",
+        "https://picsum.photos/seed/ihz-LS14-c/1200/800"
+      ]
     },
     {
       "id": "LS-00015",
       "address": "Saigon Royal, 34 Bến Vân Đồn, P.12, Q.4, TP.HCM",
       "type": "Bán",
       "price": 5800000000,
-      "price_display": "5.8 Tỷ",
-      "area": 105,
+      "price_display": "5,800,000,000 VNĐ",
+      "area": 100,
       "width": null,
       "length": null,
       "bedrooms": 3,
@@ -391,15 +485,36 @@
       "createdBy": "Lê Đức Tài",
       "createdBy_id": "u004",
       "pos_id": 2,
-      "pos_name": "POS Q.1 – Trung Tâm",
+      "pos_name": "POS Q1",
       "pos_manager": "Hồng Bảo Quân",
       "approvedAt": "2026-05-05T10:00:00Z",
       "approvedBy": "Hồng Bảo Quân",
       "createdAt": "2026-05-03T08:00:00Z",
-      "updatedAt": "2026-05-05T10:00:00Z"
+      "updatedAt": "2026-05-12T05:50:36.738Z",
+      "condition": "Cần cải tạo",
+      "source": "Chuyển nhượng",
+      "furniture": "Đầy đủ",
+      "floor": 30,
+      "priceUnit": "VNĐ",
+      "update_request_status": null,
+      "pending_update_payload": null,
+      "update_requested_at": null,
+      "update_requested_by": null,
+      "update_requested_by_id": null,
+      "update_request_note": null,
+      "propertyType": "Căn hộ chung cư",
+      "legalStatus": "Sổ hồng riêng",
+      "description": "Nội thất đầy đủ",
+      "images": [
+        "https://picsum.photos/seed/ihz-LS00015-0/1200/800"
+      ],
+      "update_rejection_reason": null,
+      "update_rejected_at": null,
+      "update_rejected_by": null
     },
     {
-      "id": "hadpkDyu4Sw",
+      "id": "LS-00016",
+      "propertyCode": "LS-00016",
       "address": "77, đường Tôn Đức Thắng, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh",
       "futureWard": "Phường Bàn Cờ",
       "district": "Quận 1",
@@ -407,17 +522,31 @@
       "type": "Bán",
       "propertyType": "Căn hộ chung cư",
       "price": 5000000000,
+      "price_display": "5 Tỷ",
       "area": 60,
       "bedrooms": 2,
       "bathrooms": 3,
       "legalStatus": "Sổ đỏ",
-      "description": "abc",
+      "description": "Căn hộ tại trung tâm Q1",
       "statusLv1": "Chờ duyệt đảm bảo",
+      "level1_status": "Chờ duyệt đảm bảo",
       "statusLv2": "Chưa niêm yết",
-      "createdAt": "2026-05-08T14:36:30.975Z"
+      "level2_status": "Chưa niêm yết",
+      "createdBy": "Lê Đức Tài",
+      "createdBy_id": "u004",
+      "pos_name": "POS Q1",
+      "pos_id": 2,
+      "createdAt": "2026-05-08T14:36:30.975Z",
+      "direction": "Tây Bắc",
+      "condition": "Nhà mới",
+      "source": "Chuyển nhượng",
+      "furniture": "Cơ bản",
+      "floor": 30,
+      "priceUnit": "VNĐ"
     },
     {
-      "id": "HnoXfHc4s5Q",
+      "id": "LS-00017",
+      "propertyCode": "LS-00017",
       "address": "32, đường Bùi Thị Xuân, Phường 6, Quận 8, TP. Hồ Chí Minh",
       "futureWard": "Phường Chợ Quán",
       "district": "Quận 8",
@@ -425,17 +554,33 @@
       "type": "Bán",
       "propertyType": "Căn hộ chung cư",
       "price": 20000000,
+      "price_display": "20 Triệu",
       "area": 100,
       "bedrooms": 5,
       "bathrooms": 3,
       "legalStatus": "Sổ đỏ",
-      "description": "abc",
+      "description": "Căn hộ rộng rãi Q8",
       "statusLv1": "Chờ POS duyệt",
+      "level1_status": "Bị từ chối",
       "statusLv2": "Chưa niêm yết",
-      "createdAt": "2026-05-08T14:37:54.560Z"
+      "level2_status": "Chưa niêm yết",
+      "createdBy": "Lê Đức Tài",
+      "createdBy_id": "u004",
+      "pos_name": "POS Q1",
+      "pos_id": 2,
+      "createdAt": "2026-05-08T14:37:54.560Z",
+      "direction": "Bắc",
+      "condition": "Nhà mới",
+      "source": "Dự án",
+      "furniture": "Cơ bản",
+      "floor": 25,
+      "priceUnit": "VNĐ",
+      "rejected_reason": "Phap ly map mo (Reason)",
+      "rejected_at": "2026-05-11T12:51:49.019Z"
     },
     {
-      "id": "c1IkwHlnxcM",
+      "id": "LS-00018",
+      "propertyCode": "LS-00018",
       "address": "23, đường Võ Thị Sáu, Phường 2, Quận 3, TP. Hồ Chí Minh",
       "futureWard": "Phường Bàn Cờ",
       "district": "Quận 3",
@@ -443,14 +588,219 @@
       "type": "Bán",
       "propertyType": "Nhà phố",
       "price": 4000000000,
+      "price_display": "4 Tỷ",
       "area": 50,
       "bedrooms": 4,
       "bathrooms": 2,
       "legalStatus": "Sổ đỏ",
+      "description": "Nhà phố Q3 tiện nghi",
+      "statusLv1": "Chờ duyệt đảm bảo",
+      "level1_status": "Chờ duyệt đảm bảo",
+      "statusLv2": "Chưa niêm yết",
+      "level2_status": "Chưa niêm yết",
+      "createdBy": "Lê Đức Tài",
+      "createdBy_id": "u004",
+      "pos_name": "POS Q1",
+      "pos_id": 2,
+      "createdAt": "2026-05-08T14:47:29.155Z",
+      "direction": "Tây Nam",
+      "condition": "Đang sử dụng",
+      "source": "Chuyển nhượng",
+      "furniture": "Cơ bản",
+      "floor": 19,
+      "priceUnit": "VNĐ"
+    },
+    {
+      "id": "LS-00019",
+      "propertyCode": "LS-00019",
+      "address": "145/25, đường Lê Văn Quới, Phường Bình Trị Đông, Quận Bình Tân, TP. Hồ Chí Minh",
+      "futureWard": "Phường Bình Trị Đông",
+      "district": "Quận Bình Tân",
+      "ward": "Phường Bình Trị Đông",
+      "type": "Thuê",
+      "propertyType": "Nhà phố",
+      "price": 5,
+      "price_display": "5 Triệu/tháng",
+      "priceUnit": "triệu VNĐ/tháng",
+      "area": 15,
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "direction": "Tây",
+      "condition": "Nhà mới",
+      "source": "Cá nhân",
+      "furniture": "Đầy đủ",
+      "floor": 2,
+      "legalStatus": "Sổ đỏ",
+      "description": "Cho thuê Phòng",
+      "statusLv1": "Chờ duyệt đảm bảo",
+      "level1_status": "Chờ duyệt đảm bảo",
+      "statusLv2": "Chưa niêm yết",
+      "level2_status": "Chưa niêm yết",
+      "createdBy": "Lê Đức Tài",
+      "createdBy_id": "u004",
+      "pos_name": "POS Q1",
+      "pos_id": 2,
+      "createdAt": "2026-05-08T18:57:53.179Z"
+    },
+    {
+      "id": "LS-00020",
+      "propertyCode": "LS-00020",
+      "address": "111, đường Võ Văn Kiệt, Thị trấn Cần Thạnh, Huyện Cần Giờ, TP. Hồ Chí Minh",
+      "futureWard": null,
+      "district": "Huyện Cần Giờ",
+      "ward": "Thị trấn Cần Thạnh",
+      "type": "Bán",
+      "propertyType": "Đất nền",
+      "price": 5,
+      "price_display": "5 Tỷ",
+      "priceUnit": "tỷ VNĐ",
+      "area": 1000,
+      "bedrooms": 0,
+      "bathrooms": 0,
+      "direction": "Bắc",
+      "condition": "Đang sử dụng",
+      "source": "Chuyển nhượng",
+      "furniture": "",
+      "floor": null,
+      "legalStatus": "Sổ hồng",
+      "description": "Đất ruộng",
+      "statusLv1": "Chờ POS duyệt",
+      "level1_status": "Chờ POS duyệt",
+      "statusLv2": "Chưa niêm yết",
+      "level2_status": "Chưa niêm yết",
+      "createdBy": "Lê Đức Tài",
+      "createdBy_id": "u004",
+      "pos_name": "POS Q1",
+      "pos_id": 2,
+      "createdAt": "2026-05-08T19:02:42.758Z"
+    },
+    {
+      "id": "LS-00021",
+      "propertyCode": "LS-00021",
+      "address": "145/26, đường Lê Văn Quới, Phường Bình Trị Đông, Quận Bình Tân, TP. Hồ Chí Minh",
+      "futureWard": "Phường Bình Trị Đông",
+      "district": "Quận Bình Tân",
+      "ward": "Phường Bình Trị Đông",
+      "type": "Thuê",
+      "propertyType": "Nhà phố",
+      "price": 5,
+      "price_display": "5 Triệu/tháng",
+      "priceUnit": "triệu VNĐ/tháng",
+      "area": 20,
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "direction": "Tây",
+      "condition": "Nhà mới",
+      "source": "Cá nhân",
+      "furniture": "Đầy đủ",
+      "floor": 2,
+      "legalStatus": "Sổ hồng",
+      "description": "Cho thuê phòng",
+      "statusLv1": "Chờ duyệt đảm bảo",
+      "level1_status": "Chờ duyệt đảm bảo",
+      "statusLv2": "Chưa niêm yết",
+      "level2_status": "Chưa niêm yết",
+      "createdBy": "Lê Đức Tài",
+      "createdBy_id": "u004",
+      "pos_name": "POS Q1",
+      "pos_id": 2,
+      "createdAt": "2026-05-08T19:25:12.452Z"
+    },
+    {
+      "id": "m0UqOxwD-H8",
+      "propertyCode": "LS-00022",
+      "address": "12, đường LLe Loi, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh",
+      "futureWard": null,
+      "district": "Quận 1",
+      "ward": "Phường Bến Nghé",
+      "type": "Bán",
+      "propertyType": "Căn hộ chung cư",
+      "price": 5000000,
+      "priceUnit": "tỷ VNĐ",
+      "area": 999999999,
+      "bedrooms": 0,
+      "bathrooms": 0,
+      "direction": "",
+      "condition": "",
+      "source": "",
+      "furniture": "",
+      "floor": null,
+      "legalStatus": "Sổ đỏ",
       "description": "",
       "statusLv1": "Chờ duyệt đảm bảo",
+      "level1_status": "Chờ duyệt đảm bảo",
       "statusLv2": "Chưa niêm yết",
-      "createdAt": "2026-05-08T14:47:29.155Z"
+      "level2_status": "Chưa niêm yết",
+      "createdBy": "Lê Đức Tài",
+      "createdBy_id": "u004",
+      "manager_name": "Lê Đức Tài",
+      "pos_name": "POS Q1",
+      "pos_id": 1,
+      "createdAt": "2026-05-11T12:45:19.803Z"
+    },
+    {
+      "id": "QPrsrssnhzI",
+      "propertyCode": "LS-00022",
+      "address": "12, đường Le Loi, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh",
+      "futureWard": null,
+      "district": "Quận 1",
+      "ward": "Phường Bến Nghé",
+      "type": "Bán",
+      "propertyType": "Căn hộ chung cư",
+      "price": 5000000,
+      "priceUnit": "tỷ VNĐ",
+      "area": 50,
+      "bedrooms": 0,
+      "bathrooms": 0,
+      "direction": "",
+      "condition": "",
+      "source": "",
+      "furniture": "",
+      "floor": null,
+      "legalStatus": "Sổ đỏ",
+      "description": "",
+      "statusLv1": "Chờ POS duyệt",
+      "level1_status": "Chờ POS duyệt",
+      "statusLv2": "Chưa niêm yết",
+      "level2_status": "Chưa niêm yết",
+      "createdBy": "Lê Đức Tài",
+      "createdBy_id": "u004",
+      "manager_name": "Lê Đức Tài",
+      "pos_name": "POS Q1",
+      "pos_id": 1,
+      "createdAt": "2026-05-11T12:46:45.425Z"
+    },
+    {
+      "id": "9qAwDBt9wpA",
+      "propertyCode": "LS-00022",
+      "address": "12, đường Le Loi, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh",
+      "futureWard": null,
+      "district": "Quận 1",
+      "ward": "Phường Bến Nghé",
+      "type": "Bán",
+      "propertyType": "Căn hộ chung cư",
+      "price": 5000000000,
+      "priceUnit": "tỷ VNĐ",
+      "area": 50,
+      "bedrooms": 0,
+      "bathrooms": 0,
+      "direction": "",
+      "condition": "",
+      "source": "",
+      "furniture": "",
+      "floor": null,
+      "legalStatus": "Sổ đỏ",
+      "description": "",
+      "statusLv1": "Chờ POS duyệt",
+      "level1_status": "Chờ POS duyệt",
+      "statusLv2": "Chưa niêm yết",
+      "level2_status": "Chưa niêm yết",
+      "createdBy": "Lê Đức Tài",
+      "createdBy_id": "u004",
+      "manager_name": "Lê Đức Tài",
+      "pos_name": "POS Q1",
+      "pos_id": 1,
+      "createdAt": "2026-05-11T12:47:28.179Z"
     }
   ],
   "listings": [
@@ -460,20 +810,25 @@
       "title": "Cho thuê nhà nguyên căn Bình Thạnh – 2PN full nội thất",
       "description": "Nhà nguyên căn đẹp, hẻm thông thoáng, gần trường học và chợ. Full nội thất cơ bản, phù hợp gia đình nhỏ hoặc cặp đôi.",
       "images": [
-        "img1.jpg",
-        "img2.jpg",
-        "img3.jpg"
+        "https://picsum.photos/seed/ihz-LT01-a/1200/800",
+        "https://picsum.photos/seed/ihz-LT01-b/1200/800",
+        "https://picsum.photos/seed/ihz-LT01-c/1200/800",
+        "https://picsum.photos/seed/ihz-LT01-d/1200/800",
+        "https://picsum.photos/seed/ihz-LT01-e/1200/800"
       ],
       "contact_phone": "0901 234 567",
-      "listing_status": "Đã duyệt",
+      "listing_status": "Yêu cầu gỡ tin",
       "createdBy": "Đinh Việt Anh",
       "createdBy_id": "u002",
       "approvedBy": "Nguyễn Thị MKT",
       "approvedBy_id": "u_mkt1",
       "createdAt": "2026-04-26T09:00:00Z",
       "approvedAt": "2026-04-27T10:00:00Z",
-      "updatedAt": "2026-04-27T10:00:00Z",
-      "expiredAt": "2026-07-27T10:00:00Z"
+      "updatedAt": "2026-05-08T18:53:40.611Z",
+      "expiredAt": "2026-07-27T10:00:00Z",
+      "unlist_reason": "Ngưng niêm yết",
+      "unlist_note": "Chủ nhà đã tìm được người mua",
+      "unlistRequestedAt": "2026-05-08T18:53:40.611Z"
     },
     {
       "id": "LT-00002",
@@ -481,16 +836,21 @@
       "title": "Bán nhà Gò Vấp – Mặt tiền Phạm Văn Đồng – SHR",
       "description": "Nhà phố mặt tiền đường lớn, kinh doanh thuận lợi. Sổ hồng riêng, pháp lý minh bạch.",
       "images": [
-        "img_gv1.jpg",
-        "img_gv2.jpg"
+        "https://picsum.photos/seed/ihz-LT02-a/1200/800",
+        "https://picsum.photos/seed/ihz-LT02-b/1200/800",
+        "https://picsum.photos/seed/ihz-LT02-c/1200/800",
+        "https://picsum.photos/seed/ihz-LT02-d/1200/800"
       ],
       "contact_phone": "0902 345 678",
-      "listing_status": "Chờ duyệt",
+      "listing_status": "Đã duyệt",
       "createdBy": "Đinh Việt Anh",
       "createdBy_id": "u002",
       "createdAt": "2026-05-05T14:00:00Z",
-      "updatedAt": "2026-05-05T14:00:00Z",
-      "expiredAt": null
+      "updatedAt": "2026-05-12T04:22:13.828Z",
+      "expiredAt": "2026-08-10T04:22:13.828Z",
+      "approvedBy": "Nguyễn Thị MKT",
+      "approvedBy_id": "u_mkt1",
+      "approvedAt": "2026-05-12T04:22:13.828Z"
     },
     {
       "id": "LT-00003",
@@ -498,11 +858,13 @@
       "title": "Bán nhà Q.3 – Lê Văn Sỹ – 5PN – 7.8 Tỷ",
       "description": "Nhà phố đẹp, hướng Tây Bắc đón gió, đường 10m ô tô thoải mái. Phù hợp ở hoặc văn phòng.",
       "images": [
-        "img_q3_1.jpg",
-        "img_q3_2.jpg"
+        "https://picsum.photos/seed/ihz-LT03-a/1200/800",
+        "https://picsum.photos/seed/ihz-LT03-b/1200/800",
+        "https://picsum.photos/seed/ihz-LT03-c/1200/800",
+        "https://picsum.photos/seed/ihz-LT03-d/1200/800"
       ],
       "contact_phone": "0903 456 789",
-      "listing_status": "Yêu cầu gỡ tin",
+      "listing_status": "Đã gỡ",
       "unlist_reason": "Ngưng niêm yết",
       "unlist_note": "Chủ nhà đã tìm được người mua, tạm ngưng đăng tin để hoàn tất thủ tục.",
       "createdBy": "Trần Thế Tùng",
@@ -512,7 +874,7 @@
       "createdAt": "2026-04-29T10:00:00Z",
       "approvedAt": "2026-04-30T09:00:00Z",
       "unlistRequestedAt": "2026-05-06T10:00:00Z",
-      "updatedAt": "2026-05-06T10:00:00Z",
+      "updatedAt": "2026-05-08T18:53:12.404Z",
       "expiredAt": "2026-07-30T09:00:00Z"
     },
     {
@@ -521,7 +883,11 @@
       "title": "Bán căn hộ Masteri Thảo Điền – 3PN view sông",
       "description": "Căn góc 3 phòng ngủ, view sông đẹp, nội thất cao cấp. Dự án Masteri uy tín, tiện ích đầy đủ.",
       "images": [
-        "img_mstr1.jpg"
+        "https://picsum.photos/seed/ihz-LT04-a/1200/800",
+        "https://picsum.photos/seed/ihz-LT04-b/1200/800",
+        "https://picsum.photos/seed/ihz-LT04-c/1200/800",
+        "https://picsum.photos/seed/ihz-LT04-d/1200/800",
+        "https://picsum.photos/seed/ihz-LT04-e/1200/800"
       ],
       "contact_phone": "0904 567 890",
       "listing_status": "Từ chối",
@@ -541,9 +907,11 @@
       "title": "Cho thuê căn hộ The Gold View – 2PN full nội thất",
       "description": "Căn hộ cao cấp The Gold View, view sông Sài Gòn tuyệt đẹp. Đầy đủ nội thất, sẵn sàng dọn vào ở.",
       "images": [
-        "img_tgv1.jpg",
-        "img_tgv2.jpg",
-        "img_tgv3.jpg"
+        "https://picsum.photos/seed/ihz-LT05-a/1200/800",
+        "https://picsum.photos/seed/ihz-LT05-b/1200/800",
+        "https://picsum.photos/seed/ihz-LT05-c/1200/800",
+        "https://picsum.photos/seed/ihz-LT05-d/1200/800",
+        "https://picsum.photos/seed/ihz-LT05-e/1200/800"
       ],
       "contact_phone": "0905 678 901",
       "listing_status": "Chờ duyệt chỉnh sửa",
@@ -553,61 +921,492 @@
       "createdAt": "2026-05-03T14:00:00Z",
       "updatedAt": "2026-05-06T11:00:00Z",
       "expiredAt": null
+    },
+    {
+      "id": "LT-00006",
+      "property_id": "LS-00012",
+      "title": "Cho thuê Nhà cần cải tạo 80m² – Bình Thạnh, TP.HCM – 2PN",
+      "description": "🏠 Nhà cho thuê tại Bình Thạnh, TP.HCM.\n📐 Diện tích: 80m²\n🛏 2 phòng ngủ | 🚿 2 WC\n🧭 Hướng: Nam | 🏠 Tình trạng: Cần cải tạo\n🛋️ Nội thất: Đầy đủ | 🏢 Tầng: 21\n📋 Pháp lý: Hợp đồng thuê\n💰 Giá: 22 Triệu/tháng\nLưu ý: Mã tài sản nội bộ LS-00012",
+      "contact_phone": "090001235",
+      "images": [
+        "https://picsum.photos/seed/ihz-LT06-a/1200/800",
+        "https://picsum.photos/seed/ihz-LT06-b/1200/800",
+        "https://picsum.photos/seed/ihz-LT06-c/1200/800",
+        "https://picsum.photos/seed/ihz-LT06-d/1200/800"
+      ],
+      "videos": [],
+      "listing_status": "Chờ duyệt",
+      "createdBy": "Lê Đức Tài",
+      "createdBy_id": "u004",
+      "createdAt": "2026-05-08T19:41:36.361Z",
+      "updatedAt": "2026-05-08T19:41:36.361Z",
+      "expiredAt": null
+    },
+    {
+      "id": "LT-00007",
+      "property_id": "LS-00002",
+      "title": "Cho thu",
+      "description": "Nh",
+      "contact_phone": "0901234567",
+      "images": [
+        "https://picsum.photos/seed/ihz-LT07-a/1200/800",
+        "https://picsum.photos/seed/ihz-LT07-b/1200/800",
+        "https://picsum.photos/seed/ihz-LT07-c/1200/800",
+        "https://picsum.photos/seed/ihz-LT07-d/1200/800"
+      ],
+      "createdBy_id": "u_pos1",
+      "createdAt": "2026-05-11T13:20:46.359Z",
+      "updatedAt": "2026-05-11T13:43:23.074Z",
+      "expiredAt": "2026-08-09T13:23:58.275Z",
+      "approvedBy": "Nguyễn Thị MKT",
+      "approvedBy_id": "u_mkt1",
+      "approvedAt": "2026-05-11T13:23:58.275Z",
+      "unlist_reason": "Ngưng niêm yết",
+      "unlist_note": "Khach doi y",
+      "unlistRequestedAt": "2026-05-11T13:41:43.182Z",
+      "approvedUnlistBy": "Nguyễn Thị MKT",
+      "approvedUnlistAt": "2026-05-11T13:43:23.074Z"
+    },
+    {
+      "id": "LT-00008",
+      "property_id": "LS-00004",
+      "title": "Cho thuê  90m² – Tân Bình, TP.HCM – 3PN",
+      "description": "🏠 Nhà cho thuê tại Tân Bình, TP.HCM.\n📐 Diện tích: 90m²\n🛏 3 phòng ngủ | 🚿 3 WC\n🧭 Hướng: Đông Nam | 🏠 Tình trạng: Nhà mới\n🛋️ Nội thất: Đầy đủ\n📋 Pháp lý: Sổ đỏ\n💰 Giá: 25 Triệu/tháng",
+      "contact_phone": "0901234567",
+      "images": [
+        "https://picsum.photos/seed/ihz-LT08-a/1200/800",
+        "https://picsum.photos/seed/ihz-LT08-b/1200/800",
+        "https://picsum.photos/seed/ihz-LT08-c/1200/800",
+        "https://picsum.photos/seed/ihz-LT08-d/1200/800",
+        "https://picsum.photos/seed/ihz-LT08-e/1200/800"
+      ],
+      "videos": [],
+      "listing_status": "Từ chối",
+      "createdBy_id": "u_admin",
+      "createdAt": "2026-05-12T03:13:55.787Z",
+      "updatedAt": "2026-05-12T03:14:19.639Z",
+      "expiredAt": null,
+      "rejection_note": "Admin - chưa đủ thông tin",
+      "rejectedBy": "Nguyễn Thị MKT",
+      "rejectedBy_id": "u_mkt1",
+      "rejectedAt": "2026-05-12T03:14:19.639Z"
     }
   ],
+  "mediaLibrary": [],
   "users": [
     {
       "id": "u001",
       "name": "Nguyễn Văn Hùng",
       "role": "sales",
       "pos_id": 1,
-      "pos_name": "POS Q.7 – Nhà Bè"
+      "pos_name": "POS Q1",
+      "email": "hungnv@ihouzz.com",
+      "phone": "0936587682",
+      "status": "active"
     },
     {
       "id": "u002",
       "name": "Đinh Việt Anh",
       "role": "sales",
-      "pos_id": 1,
-      "pos_name": "POS Q.7 – Nhà Bè"
+      "pos_id": 3,
+      "pos_name": "POS Q.5",
+      "email": "anhdv@ihouzz.com",
+      "phone": "0909200839",
+      "status": "active"
     },
     {
       "id": "u003",
       "name": "Trần Thế Tùng",
       "role": "sales",
-      "pos_id": 2,
-      "pos_name": "POS Q.1 – Trung Tâm"
+      "pos_id": 1,
+      "pos_name": "POS Q1",
+      "email": "tungtt@ihouzz.com",
+      "phone": "0777668899",
+      "status": "active"
     },
     {
       "id": "u004",
       "name": "Lê Đức Tài",
       "role": "sales",
-      "pos_id": 2,
-      "pos_name": "POS Q.1 – Trung Tâm"
+      "pos_id": 1,
+      "pos_name": "POS Q1",
+      "email": "sales@ihouzz.com",
+      "phone": "0777683168",
+      "status": "active"
     },
     {
       "id": "u_pos1",
-      "name": "Trần Hồng Oanh",
+      "name": "Hồng Bảo Quân",
       "role": "pos_manager",
       "pos_id": 1,
-      "pos_name": "POS Q.7 – Nhà Bè"
+      "pos_name": "POS Q1",
+      "email": "pos_manager@ihouzz.com",
+      "status": "active"
     },
     {
       "id": "u_pos2",
-      "name": "Hồng Bảo Quân",
+      "name": "Trần Hồng Oanh",
       "role": "pos_manager",
-      "pos_id": 2,
-      "pos_name": "POS Q.1 – Trung Tâm"
+      "pos_id": 3,
+      "pos_name": "POS Q.5",
+      "email": "pos2_manager@ihouzz.com",
+      "phone": "0936666222",
+      "status": "active"
     },
     {
       "id": "u_mkt1",
       "name": "Nguyễn Thị MKT",
       "role": "marketing",
       "pos_id": null,
-      "pos_name": "Marketing Dept."
+      "pos_name": null,
+      "email": "mkt@ihouzz.com",
+      "status": "active"
+    },
+    {
+      "id": "u_admin",
+      "name": "Admin iHouzz",
+      "role": "admin",
+      "pos_id": null,
+      "pos_name": null,
+      "email": "admin@ihouzz.com",
+      "status": "active"
     }
   ],
-  "logs": [],
-  "notifications": [],
+  "logs": [
+    {
+      "timestamp": "2026-05-08T17:21:31.499Z",
+      "action": "[F10] Tạo POS mới: POS Q.5",
+      "entityId": "pos_1778260891470",
+      "user": "Admin (F10)",
+      "id": "W2l6wUzWnaE"
+    },
+    {
+      "timestamp": "2026-05-08T17:22:29.768Z",
+      "action": "[F10] Cập nhật tài khoản: Lê Đức Tài (sales)",
+      "entityId": "u004",
+      "user": "Admin (F10)",
+      "id": "QbLg1qhjiSc"
+    },
+    {
+      "timestamp": "2026-05-08T17:34:01.399Z",
+      "action": "[F10] Cập nhật tài khoản: Hồng Bảo Quân (pos_manager)",
+      "entityId": "u_pos2",
+      "user": "Admin (F10)",
+      "id": "3WjdeDJ2u9E"
+    },
+    {
+      "timestamp": "2026-05-08T18:45:47.815Z",
+      "action": "[F10] Cập nhật POS: POS Q.1 – Trung Tâm",
+      "entityId": "2",
+      "user": "Admin (F10)",
+      "id": "9MxLR2B05Ao"
+    },
+    {
+      "timestamp": "2026-05-08T18:59:43.639Z",
+      "action": "[F10] Cập nhật POS: POS Q.1 – Trung Tâm",
+      "entityId": "2",
+      "user": "Admin (F10)",
+      "id": "x3BztluhvQA"
+    },
+    {
+      "timestamp": "2026-05-08T19:30:32.172Z",
+      "action": "[F10] Cập nhật POS: POS Q1",
+      "entityId": "1",
+      "user": "Admin (F10)",
+      "id": "eBRs4soq0vY"
+    },
+    {
+      "timestamp": "2026-05-08T20:36:25.000Z",
+      "action": "[F10] Cập nhật tài khoản: Nguyễn Văn Hùng (sales)",
+      "entityId": "u001",
+      "user": "Admin (F10)",
+      "id": "vsdSE5wfCvU"
+    },
+    {
+      "timestamp": "2026-05-08T20:37:01.629Z",
+      "action": "[F10] Cập nhật tài khoản: Đinh Việt Anh (sales)",
+      "entityId": "u002",
+      "user": "Admin (F10)",
+      "id": "CkL7lkVijko"
+    },
+    {
+      "timestamp": "2026-05-08T20:37:16.552Z",
+      "action": "[F10] Cập nhật tài khoản: Lê Đức Tài (sales)",
+      "entityId": "u004",
+      "user": "Admin (F10)",
+      "id": "kBS5v0koOds"
+    },
+    {
+      "timestamp": "2026-05-08T20:37:45.665Z",
+      "action": "[F10] Cập nhật tài khoản: Trần Hồng Oanh (pos_manager)",
+      "entityId": "u_pos2",
+      "user": "Admin (F10)",
+      "id": "z6l3_FYqjjE"
+    },
+    {
+      "timestamp": "2026-05-08T20:38:01.479Z",
+      "action": "[F10] Cập nhật tài khoản: Nguyễn Văn Hùng (sales)",
+      "entityId": "u001",
+      "user": "Admin (F10)",
+      "id": "C0el32TCYDE"
+    },
+    {
+      "timestamp": "2026-05-08T20:38:56.391Z",
+      "action": "[F10] Cập nhật tài khoản: Trần Thế Tùng (sales)",
+      "entityId": "u003",
+      "user": "Admin (F10)",
+      "id": "t-X7kAYmIN0"
+    },
+    {
+      "timestamp": "2026-05-08T20:39:28.748Z",
+      "action": "[F10] Cập nhật POS: POS Q.5",
+      "entityId": "3",
+      "user": "Admin (F10)",
+      "id": "kRJgcK-Ru5s"
+    },
+    {
+      "timestamp": "2026-05-08T20:40:09.098Z",
+      "action": "[F10] Cập nhật POS: POS Q.1 – Trung Tâm",
+      "entityId": "2",
+      "user": "Admin (F10)",
+      "id": "TvBCPcsaRx0"
+    },
+    {
+      "timestamp": "2026-05-08T20:49:17.247Z",
+      "action": "[F10] Cập nhật tài khoản: Trần Thế Tùng (sales)",
+      "entityId": "u003",
+      "user": "Admin (F10)",
+      "id": "Y3pPxeLHw1s"
+    },
+    {
+      "entityId": "LS-00017",
+      "action": "REJECT",
+      "user": "GĐ POS",
+      "reason": "Phap ly map mo (Reason)",
+      "timestamp": "2026-05-11T12:51:49.052Z",
+      "id": "cZv4QURxAmM"
+    },
+    {
+      "entityId": "LS-00002",
+      "action": "APPROVE_STANDARD",
+      "user": "GĐ POS",
+      "timestamp": "2026-05-11T13:11:11.332Z",
+      "id": "GwFtzY7yuZk"
+    },
+    {
+      "entityId": "LS-00011",
+      "action": "APPROVE_GUARANTEED",
+      "user": "GĐ POS",
+      "timestamp": "2026-05-11T13:11:45.372Z",
+      "id": "cVkFghhnUhc"
+    },
+    {
+      "timestamp": "2026-05-11T13:43:23.477Z",
+      "action": "[F7-UC007] Duyệt gỡ tin → Lv2=\"Chưa niêm yết\" (BR-005 AUTO-SYNC)",
+      "entityId": "LT-00007",
+      "user": "MKT/Admin (F7)",
+      "id": "x4dy0j60Xg8"
+    },
+    {
+      "timestamp": "2026-05-11T13:45:54.762Z",
+      "action": "[F8-UC008] Sales yêu cầu gỡ nguồn · Ghi chú: Khach khong muon ban nua",
+      "entityId": "LS-00002",
+      "user": "Admin iHouzz",
+      "id": "r2pEQPWfwY0"
+    },
+    {
+      "timestamp": "2026-05-11T14:01:59.035Z",
+      "action": "[F10] Cập nhật Ma trận Phân quyền",
+      "entityId": "SYSTEM",
+      "user": "Admin (F10)",
+      "id": "hHpcndn4isk"
+    },
+    {
+      "timestamp": "2026-05-11T14:02:28.899Z",
+      "action": "[F11] Export Audit Log · 21 bản ghi",
+      "entityId": "SYSTEM",
+      "user": "Admin (F11)",
+      "id": "o7_MMg_xfCc"
+    },
+    {
+      "timestamp": "2026-05-11T14:04:16.742Z",
+      "action": "[F10] Cập nhật Ma trận Phân quyền",
+      "entityId": "SYSTEM",
+      "user": "Admin (F10)",
+      "id": "oygJ0B3nYFo"
+    },
+    {
+      "timestamp": "2026-05-11T14:04:36.436Z",
+      "action": "[F10] Cập nhật Ma trận Phân quyền",
+      "entityId": "SYSTEM",
+      "user": "Admin (F10)",
+      "id": "6uz6I_7d09c"
+    },
+    {
+      "timestamp": "2026-05-11T14:07:36.338Z",
+      "action": "[F10] Cập nhật Ma trận Phân quyền",
+      "entityId": "SYSTEM",
+      "user": "Admin (F10)",
+      "id": "3EzSfyx4cR4"
+    },
+    {
+      "timestamp": "2026-05-11T14:08:57.700Z",
+      "action": "[F10] Cập nhật Ma trận Phân quyền",
+      "entityId": "SYSTEM",
+      "user": "Admin (F10)",
+      "id": "dRN4zPEEvYM"
+    },
+    {
+      "timestamp": "2026-05-11T14:13:19.000Z",
+      "action": "[F10] Cập nhật Ma trận Phân quyền",
+      "entityId": "SYSTEM",
+      "user": "Admin (F10)",
+      "id": "LN2TgpXQqAc"
+    },
+    {
+      "timestamp": "2026-05-11T14:20:39.552Z",
+      "action": "[F10] Cập nhật Ma trận Phân quyền",
+      "entityId": "SYSTEM",
+      "user": "Admin (F10)",
+      "id": "da7FgmoxNLI"
+    },
+    {
+      "timestamp": "2026-05-11T15:58:30.462Z",
+      "action": "[F8-UC009] GĐ POS duyệt gỡ nguồn → Lv1+Lv2=\"Đã gỡ nguồn\" + CASCADE listings",
+      "entityId": "LS-00002",
+      "user": "Hồng Bảo Quân",
+      "id": "nsfvvaioeSY"
+    },
+    {
+      "timestamp": "2026-05-11T16:00:24.346Z",
+      "action": "[F11] Export Audit Log · 29 bản ghi",
+      "entityId": "SYSTEM",
+      "user": "Admin (F11)",
+      "id": "HDyA-arzIOM"
+    },
+    {
+      "timestamp": "2026-05-12T05:49:16.663Z",
+      "action": "[F2] Đầu chủ gửi yêu cầu phê duyệt cập nhật tài sản (chờ GĐ POS)",
+      "entityId": "LS-00015",
+      "user": "Lê Đức Tài",
+      "changesPreview": [
+        "propertyType",
+        "area",
+        "floor",
+        "description",
+        "images"
+      ],
+      "id": "eGe4079KGdE"
+    },
+    {
+      "entityId": "LS-00015",
+      "action": "F3-Duyệt phê duyệt cập nhật tài sản",
+      "user": "Hồng Bảo Quân",
+      "timestamp": "2026-05-12T05:50:36.752Z",
+      "approver": "Hồng Bảo Quân",
+      "approvalKind": "property_update",
+      "changedAt": "2026-05-12T05:50:36.752Z",
+      "changes": [
+        {
+          "field": "propertyType",
+          "new": "Căn hộ chung cư"
+        },
+        {
+          "field": "area",
+          "old": 105,
+          "new": 100
+        },
+        {
+          "field": "floor",
+          "old": 28,
+          "new": 30
+        },
+        {
+          "field": "description",
+          "new": "Nội thất đầy đủ"
+        },
+        {
+          "field": "images",
+          "new": [
+            "https://picsum.photos/seed/ihz-LS00015-0/1200/800"
+          ]
+        }
+      ],
+      "id": "n0FpTn9UbA0"
+    },
+    {
+      "timestamp": "2026-05-12T11:24:59.832Z",
+      "action": "[F10] Cập nhật Ma trận Phân quyền",
+      "entityId": "SYSTEM",
+      "user": "Admin (F10)",
+      "id": "uweFSIysat4"
+    },
+    {
+      "timestamp": "2026-05-12T11:25:05.443Z",
+      "action": "[F10] Cập nhật Ma trận Phân quyền",
+      "entityId": "SYSTEM",
+      "user": "Admin (F10)",
+      "id": "HFFaDX_OtXg"
+    }
+  ],
+  "notifications": [
+    {
+      "propertyId": "LS-00017",
+      "recipient": "Lê Đức Tài",
+      "message": "Hồ sơ LS-00017 bị từ chối. Lý do: Phap ly map mo (Reason)",
+      "type": "danger",
+      "createdAt": "2026-05-11T12:51:49.083Z",
+      "isRead": false,
+      "id": "CYEwYgMA5Rg"
+    },
+    {
+      "propertyId": "LS-00002",
+      "recipient": "Nguyễn Văn Hùng",
+      "message": "Tài sản LS-00002 đã vào Kho Chuẩn.",
+      "type": "success",
+      "createdAt": "2026-05-11T13:11:11.368Z",
+      "isRead": false,
+      "id": "EoUIs4i80AE"
+    },
+    {
+      "propertyId": "LS-00011",
+      "recipient": "Lê Đức Tài",
+      "message": "Tài sản LS-00011 đã vào Kho Đảm bảo.",
+      "type": "success",
+      "createdAt": "2026-05-11T13:11:45.395Z",
+      "isRead": false,
+      "id": "_HLSnlQIEi0"
+    },
+    {
+      "propertyId": "LS-00015",
+      "recipient": "Lê Đức Tài",
+      "message": "GĐ POS đã duyệt cập nhật tài sản LS-00015.",
+      "type": "success",
+      "createdAt": "2026-05-12T05:50:36.761Z",
+      "isRead": false,
+      "id": "ZE-MWm4zDZI"
+    }
+  ],
   "status_history": [],
+  "pos": [
+    {
+      "id": "1",
+      "name": "POS Q1",
+      "manager": "Hồng Bảo Quân",
+      "status": "active"
+    },
+    {
+      "id": "2",
+      "name": "POS Q.1 – Trung Tâm",
+      "manager": "Nguyễn Văn Năm",
+      "status": "active"
+    },
+    {
+      "name": "POS Q.5",
+      "manager": "Trần Hồng Oanh",
+      "id": "3",
+      "status": "active"
+    }
+  ],
   "$schema": "./node_modules/json-server/schema.json"
 }

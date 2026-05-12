@@ -8,7 +8,7 @@ const API = 'http://localhost:5000';
 const ROLES = ['admin', 'pos_manager', 'sales', 'marketing'];
 const ROLE_LABEL = { admin: 'Admin Tổng', pos_manager: 'Giám đốc POS', sales: 'Chuyên viên Đầu chủ', marketing: 'Chuyên viên MKT' };
 const ROLE_COLOR = { admin: 'danger', pos_manager: 'warning', sales: 'primary', marketing: 'info' };
-const STATUS_COLOR = { active: 'success', locked: 'danger', pending: 'warning' };
+const STATUS_COLOR = { active: 'success', locked: 'warning', pending: 'info', inactive: 'danger' };
 
 function Toast({ toast }) {
   if (!toast) return null;
@@ -21,38 +21,44 @@ function Toast({ toast }) {
 }
 
 export default function Feature10_IAM() {
+  const userStr = localStorage.getItem('user');
+  const userObj = userStr ? JSON.parse(userStr) : {};
+  const rawRole = userObj.role || localStorage.getItem('user_role') || 'guest';
+  const ROLE = rawRole === 'pos' ? 'pos_manager' : rawRole === 'mkt' ? 'marketing' : rawRole;
+  const POS_NAME = userObj.pos_name || localStorage.getItem('pos_name') || 'POS Chi Nhánh 1';
+
   const [users, setUsers] = useState([]);
   const [posList, setPosList] = useState([]);
   const [tab, setTab] = useState('users'); // 'users' | 'pos' | 'perms'
   const [permMatrix, setPermMatrix] = useState(() => getPermissions());
   const [permSaved, setPermSaved] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [modalMode, setModalMode] = useState(null); // 'lock'|'unlock'|'create'|'pos_detail'
+  const [modalMode, setModalMode] = useState(null); // 'lock'|'unlock'|'create'|'pos_detail'|'edit'|'create_pos'|'edit_pos'|'inactive_user'
   const [lockReason, setLockReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
-  const [newUser, setNewUser] = useState({ name: '', role: 'sales', pos_id: '', email: '', phone: '' });
-
-  // Derived POS list from properties (since db.json doesn't have a 'pos' collection)
-  const properties = [];
+  const [newUser, setNewUser] = useState({ name: '', role: 'sales', pos_name: '', email: '', phone: '' });
+  const [editUser, setEditUser] = useState(null);
+  const [newPos, setNewPos] = useState({ name: '', manager_id: '', manager_name: '', manager_user: null });
+  const [editPos, setEditPos] = useState(null);
 
   useEffect(() => { loadAll(); }, []);
 
+  const resolvePosIdFromName = (posName) => {
+    if (!posName || !Array.isArray(posList)) return null;
+    const found = posList.find((p) => p.name === posName);
+    if (!found) return null;
+    const n = Number(found.id);
+    return Number.isNaN(n) ? null : n;
+  };
+
   const loadAll = async () => {
-    const [u, p] = await Promise.all([
+    const [u, pList] = await Promise.all([
       fetch(`${API}/users`).then(r => r.json()),
-      fetch(`${API}/properties`).then(r => r.json()),
+      fetch(`${API}/pos`).then(r => r.json()).catch(() => []),
     ]);
     setUsers(u);
-    // Build POS list from properties
-    const posMap = {};
-    p.forEach(prop => {
-      if (prop.pos_id && !posMap[prop.pos_id]) {
-        posMap[prop.pos_id] = { id: prop.pos_id, name: prop.pos_name, manager: prop.pos_manager, propCount: 0, status: 'active' };
-      }
-      if (prop.pos_id) posMap[prop.pos_id].propCount = (posMap[prop.pos_id].propCount || 0) + 1;
-    });
-    setPosList(Object.values(posMap));
+    setPosList(pList);
   };
 
   const showToast = (msg, type = 'success') => {
@@ -84,8 +90,20 @@ export default function Feature10_IAM() {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'active', lockReason: null, lockedAt: null, lockedBy: null, unlockedAt: new Date().toISOString() }),
     });
-    await postLog(`[F10] Mở khóa tài khoản`, selected.id);
-    showToast(`🔓 Đã mở khóa tài khoản "${selected.name}".`, 'warning');
+    await postLog(`[F10] Mở khóa/Phục hồi tài khoản`, selected.id);
+    showToast(`🔓 Đã mở khóa tài khoản "${selected.name}".`, 'success');
+    setSelected(null); setModalMode(null);
+    setSubmitting(false); loadAll();
+  };
+
+  const handleInactiveUser = async () => {
+    setSubmitting(true);
+    await fetch(`${API}/users/${selected.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'inactive', inactiveAt: new Date().toISOString() }),
+    });
+    await postLog(`[F10] Báo nghỉ việc nhân sự`, selected.id);
+    showToast(`⚠️ Đã cập nhật tài khoản "${selected.name}" thành Nghỉ việc.`, 'warning');
     setSelected(null); setModalMode(null);
     setSubmitting(false); loadAll();
   };
@@ -103,18 +121,126 @@ export default function Feature10_IAM() {
   const handleCreateUser = async () => {
     if (!newUser.name.trim() || !newUser.role) { showToast('Vui lòng điền tên và vai trò!', 'danger'); return; }
     setSubmitting(true);
-    const id = `u_new_${Date.now()}`;
+    const id = `u${Date.now()}`;
+    const pos_id = resolvePosIdFromName(newUser.pos_name);
     await fetch(`${API}/users`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...newUser, id, status: 'pending', createdAt: new Date().toISOString() }),
+      body: JSON.stringify({
+        ...newUser,
+        id,
+        pos_id,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      }),
     });
     await postLog(`[F10] Tạo tài khoản mới: ${newUser.name} (${newUser.role})`, id);
     showToast(`✅ Đã tạo tài khoản "${newUser.name}". Trạng thái: Chờ kích hoạt.`);
-    setNewUser({ name: '', role: 'sales', pos_id: '', email: '', phone: '' });
+    setNewUser({ name: '', role: 'sales', pos_name: '', email: '', phone: '' });
     setModalMode(null); setSubmitting(false); loadAll();
   };
 
-  const usersByStatus = { active: users.filter(u => u.status === 'active' || !u.status), locked: users.filter(u => u.status === 'locked'), pending: users.filter(u => u.status === 'pending') };
+  const handleEditUser = async () => {
+    if (!editUser.name.trim()) { showToast('Tên không được trống!', 'danger'); return; }
+    setSubmitting(true);
+    const pos_id = resolvePosIdFromName(editUser.pos_name);
+    await fetch(`${API}/users/${editUser.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: editUser.name,
+        role: editUser.role,
+        pos_name: editUser.pos_name,
+        pos_id,
+        email: editUser.email,
+        phone: editUser.phone,
+      }),
+    });
+    await postLog(`[F10] Cập nhật tài khoản: ${editUser.name} (${editUser.role})`, editUser.id);
+    showToast(`✅ Đã cập nhật tài khoản "${editUser.name}".`);
+    setModalMode(null); setEditUser(null); setSubmitting(false); loadAll();
+  };
+
+  const handleCreatePos = async () => {
+    if (!newPos.name.trim()) { showToast('Vui lòng nhập tên POS!', 'danger'); return; }
+    if (newPos.manager_id && !newPos.manager_name) { showToast('ID nhân sự không hợp lệ!', 'danger'); return; }
+    
+    // Cảnh báo luân chuyển
+    if (newPos.manager_user && newPos.manager_user.pos_name) {
+      const roleText = ROLE_LABEL[newPos.manager_user.role] || newPos.manager_user.role;
+      const posText = newPos.manager_user.pos_name;
+      const isSure = window.confirm(
+        `CẢNH BÁO LUÂN CHUYỂN:\n\nNhân sự "${newPos.manager_name}" hiện đang là [${roleText}] tại chi nhánh [${posText}].\n\nBạn có chắc chắn muốn hủy vị trí cũ và thăng chức người này làm Giám đốc cho POS mới không?`
+      );
+      if (!isSure) return;
+    }
+    
+    setSubmitting(true);
+    const id = `pos_${Date.now()}`;
+    await fetch(`${API}/pos`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newPos.name, manager: newPos.manager_name, id, status: 'active' }),
+    });
+    
+    // Nếu có gán GĐ POS, tiến hành tự động update user đó về POS mới
+    if (newPos.manager_id && newPos.manager_name) {
+      const user = users.find(u => u.id === newPos.manager_id || u.email === newPos.manager_id);
+      if (user) {
+        const pos_id = resolvePosIdFromName(newPos.name);
+        await fetch(`${API}/users/${user.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pos_name: newPos.name, role: 'pos_manager', pos_id }),
+        });
+      }
+    }
+
+    await postLog(`[F10] Tạo POS mới: ${newPos.name}`, id);
+    showToast(`✅ Đã tạo POS "${newPos.name}".`);
+    setNewPos({ name: '', manager_id: '', manager_name: '', manager_user: null });
+    setModalMode(null); setSubmitting(false); loadAll();
+  };
+
+  const handleEditPos = async () => {
+    if (!editPos.name.trim()) { showToast('Vui lòng nhập tên POS!', 'danger'); return; }
+    setSubmitting(true);
+    
+    // Nếu gán GĐ mới
+    if (editPos.manager_id && editPos.manager_name) {
+      const user = users.find(u => u.id === editPos.manager_id || u.email === editPos.manager_id);
+      if (user && (user.pos_name !== editPos.name || user.role !== 'pos_manager')) {
+        const pos_id = resolvePosIdFromName(editPos.name);
+        await fetch(`${API}/users/${user.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pos_name: editPos.name, role: 'pos_manager', pos_id }),
+        });
+      }
+    }
+
+    await fetch(`${API}/pos/${editPos.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        name: editPos.name, 
+        manager: editPos.manager_name || editPos.manager, 
+        status: editPos.status 
+      }),
+    });
+    await postLog(`[F10] Cập nhật POS: ${editPos.name}`, editPos.id);
+    showToast(`✅ Đã cập nhật POS "${editPos.name}".`);
+    setModalMode(null); setEditPos(null); setSubmitting(false); loadAll();
+  };
+
+  const filteredUsers = ROLE === 'admin' ? users : users.filter(u => u.pos_name === POS_NAME);
+  const usersByStatus = { 
+    active: filteredUsers.filter(u => u.status === 'active' || !u.status), 
+    locked: filteredUsers.filter(u => u.status === 'locked'), 
+    pending: filteredUsers.filter(u => u.status === 'pending'),
+    inactive: filteredUsers.filter(u => u.status === 'inactive')
+  };
+
+  // Tính toán cảnh báo POS thiếu GĐ hoặc GĐ bị inactive
+  const posMissingManager = posList.filter(p => {
+    if (p.status === 'inactive') return false; // Không cảnh báo POS đã đóng
+    const mgr = users.find(u => u.pos_name === p.name && u.role === 'pos_manager' && u.status === 'active');
+    return !mgr;
+  });
 
   return (
     <div className="p-4" style={{ background: '#f0f4ff', minHeight: '100vh' }}>
@@ -126,10 +252,17 @@ export default function Feature10_IAM() {
           <small className="text-muted">Quản trị tài khoản · RBAC · Vòng đời nhân viên · Không có nút Xóa</small>
         </div>
         <div className="d-flex gap-2">
-          <span className="badge bg-danger px-3 py-2">⛔ Không Xóa</span>
-          <button className="btn btn-primary btn-sm" onClick={() => setModalMode('create')}>
-            <i className="bi bi-person-plus me-1"></i>Tạo tài khoản
-          </button>
+          <span className="badge bg-danger px-3 py-2 d-flex align-items-center">⛔ Không Xóa</span>
+          {ROLE === 'admin' && (
+            <>
+              <button className="btn btn-warning btn-sm text-dark fw-semibold" onClick={() => setModalMode('create_pos')}>
+                <i className="bi bi-building-add me-1"></i>Tạo POS mới
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={() => setModalMode('create')}>
+                <i className="bi bi-person-plus me-1"></i>Tạo tài khoản
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -138,10 +271,10 @@ export default function Feature10_IAM() {
       {/* Stats */}
       <div className="row g-3 mb-4">
         {[
-          { label: 'Tổng nhân sự', value: users.length, color: '#1976d2', icon: 'bi-people' },
+          { label: 'Tổng nhân sự', value: filteredUsers.length, color: '#1976d2', icon: 'bi-people' },
           { label: 'Đang hoạt động', value: usersByStatus.active.length, color: '#388e3c', icon: 'bi-person-check' },
-          { label: 'Bị khóa', value: usersByStatus.locked.length, color: '#e53935', icon: 'bi-person-lock' },
-          { label: 'Chờ kích hoạt', value: usersByStatus.pending.length, color: '#f57c00', icon: 'bi-person-exclamation' },
+          { label: 'Bị khóa', value: usersByStatus.locked.length, color: '#f57c00', icon: 'bi-person-lock' },
+          { label: 'Đã nghỉ việc', value: usersByStatus.inactive.length, color: '#e53935', icon: 'bi-person-dash' },
           { label: 'Số POS', value: posList.length, color: '#7b1fa2', icon: 'bi-building' },
         ].map(s => (
           <div key={s.label} className="col-6 col-md">
@@ -164,16 +297,33 @@ export default function Feature10_IAM() {
           <button className={`btn btn-sm ${tab === 'pos' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTab('pos')}>
             <i className="bi bi-building me-1"></i>Cấu hình POS ({posList.length})
           </button>
-          <button className={`btn btn-sm ${tab === 'perms' ? 'btn-warning text-dark' : 'btn-outline-warning'}`} onClick={() => setTab('perms')}>
-            <i className="bi bi-shield-lock me-1"></i>Ma trận Phân quyền
-            <span className="badge bg-danger ms-1" style={{fontSize:9}}>ADMIN</span>
-          </button>
+          {ROLE === 'admin' && (
+            <button className={`btn btn-sm ${tab === 'perms' ? 'btn-warning text-dark' : 'btn-outline-warning'}`} onClick={() => setTab('perms')}>
+              <i className="bi bi-shield-lock me-1"></i>Ma trận Phân quyền
+              <span className="badge bg-danger ms-1" style={{fontSize:9}}>ADMIN</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Users Tab */}
       {tab === 'users' && (
         <div>
+          {/* Cảnh báo POS thiếu GĐ */}
+          {ROLE === 'admin' && posMissingManager.length > 0 && (
+            <div className="alert alert-danger border-danger shadow-sm d-flex align-items-start gap-2 mb-3">
+              <i className="bi bi-exclamation-triangle-fill fs-5 text-danger mt-1"></i>
+              <div>
+                <strong>CẢNH BÁO BẢO MẬT: Phát hiện {posMissingManager.length} POS không có Giám đốc hoạt động!</strong>
+                <div className="small mt-1">
+                  Các POS sau đang chưa có người quản lý (chưa gắn GĐ hoặc GĐ đã Nghỉ việc/Bị khóa): 
+                  <span className="fw-bold"> {posMissingManager.map(p => p.name).join(', ')}</span>. 
+                  Vui lòng cập nhật ngay để tránh ngắt quãng quy trình phê duyệt (F3, F8).
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Pending activation */}
           {usersByStatus.pending.length > 0 && (
             <div className="card border-warning border-2 shadow-sm mb-3">
@@ -200,53 +350,83 @@ export default function Feature10_IAM() {
 
           {/* User table */}
           <div className="card border-0 shadow-sm">
-            <div className="card-header border-0 bg-white fw-semibold">Danh sách Nhân sự ({users.length})</div>
+            <div className="card-header border-0 bg-white fw-semibold">Danh sách Nhân sự ({filteredUsers.length})</div>
             <div className="card-body p-0">
-              {users.length === 0 && <div className="text-center py-5 text-muted"><i className="bi bi-inbox fs-2"></i><p className="mt-2">Chưa có nhân viên nào.</p></div>}
-              {users.map(u => {
-                const status = u.status || 'active';
-                return (
-                  <div key={u.id} className={`p-3 border-bottom d-flex align-items-start gap-3 ${status === 'locked' ? 'opacity-60 bg-light' : ''}`}>
-                    <div className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
-                      style={{ width: 40, height: 40, fontSize: 16 }}>
-                      {u.name?.charAt(0) || '?'}
-                    </div>
-                    <div className="flex-grow-1">
-                      <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                        <span className="fw-semibold">{u.name}</span>
-                        <span className={`badge bg-${ROLE_COLOR[u.role] || 'secondary'} ${u.role === 'pos_manager' ? 'text-dark' : ''}`}>{ROLE_LABEL[u.role] || u.role}</span>
-                        <span className={`badge bg-${STATUS_COLOR[status] || 'secondary'} ${status === 'pending' ? 'text-dark' : ''}`}>{status === 'active' ? '✅ Đang hoạt động' : status === 'locked' ? '🔒 Bị khóa' : '⏳ Chờ kích hoạt'}</span>
-                      </div>
-                      <div className="text-muted small">
-                        <span className="me-3"><i className="bi bi-building me-1"></i>{u.pos_name || '—'}</span>
-                        <span className="me-3"><i className="bi bi-tag me-1"></i>{u.id}</span>
-                      </div>
-                      {status === 'locked' && u.lockReason && (
-                        <div className="alert alert-danger py-1 px-2 small mt-1 mb-0">
-                          <i className="bi bi-lock me-1"></i><strong>Lý do khóa:</strong> {u.lockReason}
-                        </div>
-                      )}
-                    </div>
-                    <div className="d-flex flex-column gap-1 flex-shrink-0">
-                      {status === 'active' && (
-                        <button className="btn btn-sm btn-outline-danger" onClick={() => { setSelected(u); setModalMode('lock'); setLockReason(''); }}>
-                          <i className="bi bi-lock me-1"></i>Khóa
-                        </button>
-                      )}
-                      {status === 'locked' && (
-                        <button className="btn btn-sm btn-outline-success" onClick={() => { setSelected(u); setModalMode('unlock'); }}>
-                          <i className="bi bi-unlock me-1"></i>Mở khóa
-                        </button>
-                      )}
-                      {status === 'pending' && (
-                        <button className="btn btn-sm btn-success" onClick={() => handleActivate(u)}>
-                          <i className="bi bi-check me-1"></i>Kích hoạt
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {filteredUsers.length === 0 && <div className="text-center py-5 text-muted"><i className="bi bi-inbox fs-2"></i><p className="mt-2">Chưa có nhân viên nào.</p></div>}
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0">
+                  <thead className="table-light">
+                    <tr>
+                      <th className="small text-muted">Mã NV</th>
+                      <th className="small text-muted">User</th>
+                      <th className="small text-muted">Họ và tên / Chức vụ</th>
+                      <th className="small text-muted">Chi nhánh làm việc</th>
+                      <th className="small text-muted">Số ĐT</th>
+                      <th className="small text-muted text-center">Trạng thái</th>
+                      <th className="small text-muted text-end">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map(u => {
+                      const status = u.status || 'active';
+                      const userMail = u.email ? u.email.split('@')[0] : 'N/A';
+                      return (
+                        <tr key={u.id} className={status === 'locked' || status === 'inactive' ? 'opacity-75 bg-light' : ''}>
+                          <td><span className="badge bg-secondary">{u.id}</span></td>
+                          <td className="fw-semibold text-primary">{userMail}</td>
+                          <td>
+                            <div className="fw-bold">{u.name}</div>
+                            <span className={`badge bg-${ROLE_COLOR[u.role] || 'secondary'} ${u.role === 'pos_manager' ? 'text-dark' : ''} mt-1`} style={{fontSize:10}}>
+                              {ROLE_LABEL[u.role] || u.role}
+                            </span>
+                          </td>
+                          <td>
+                            <i className="bi bi-building me-1 text-muted"></i>
+                            <span className="fw-semibold">{u.pos_name || '—'}</span>
+                          </td>
+                          <td>{u.phone || '—'}</td>
+                          <td className="text-center">
+                            <span className={`badge bg-${STATUS_COLOR[status] || 'secondary'} ${status === 'pending' ? 'text-dark' : ''}`}>
+                              {status === 'active' ? '✅ Hoạt động' : status === 'locked' ? '🔒 Bị khóa' : status === 'inactive' ? '🚫 Nghỉ việc' : '⏳ Chờ kích hoạt'}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="d-flex gap-1 justify-content-end">
+                              {ROLE === 'admin' && (
+                                <button className="btn btn-sm btn-outline-primary" onClick={() => { setEditUser(u); setModalMode('edit'); }} title="Sửa">
+                                  <i className="bi bi-pencil"></i>
+                                </button>
+                              )}
+                              {status === 'active' && (
+                                <>
+                                  <button className="btn btn-sm btn-outline-warning text-dark" onClick={() => { setSelected(u); setModalMode('lock'); setLockReason(''); }} title="Khóa">
+                                    <i className="bi bi-lock"></i>
+                                  </button>
+                                  {ROLE === 'admin' && (
+                                    <button className="btn btn-sm btn-outline-danger" onClick={() => { setSelected(u); setModalMode('inactive_user'); }} title="Báo nghỉ việc">
+                                      <i className="bi bi-person-dash"></i>
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                              {(status === 'locked' || status === 'inactive') && (
+                                <button className="btn btn-sm btn-outline-success" onClick={() => { setSelected(u); setModalMode('unlock'); }} title="Phục hồi">
+                                  <i className="bi bi-unlock"></i>
+                                </button>
+                              )}
+                              {status === 'pending' && (
+                                <button className="btn btn-sm btn-success" onClick={() => handleActivate(u)} title="Kích hoạt">
+                                  <i className="bi bi-check"></i>
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -257,35 +437,44 @@ export default function Feature10_IAM() {
         <div className="card border-0 shadow-sm">
           <div className="card-header border-0 bg-white fw-semibold d-flex justify-content-between">
             <span><i className="bi bi-building me-1"></i>Danh sách POS ({posList.length})</span>
-            <span className="text-muted small fw-normal">⛔ Không thể xóa POS — chỉ Vô hiệu hóa</span>
+            <span className="text-muted small fw-normal">Có thể vô hiệu hóa (Inactive) POS ngừng hoạt động</span>
           </div>
           <div className="card-body p-0">
             {posList.length === 0 && <div className="text-center py-5 text-muted"><i className="bi bi-inbox fs-2"></i><p className="mt-2">Chưa có POS nào.</p></div>}
-            {posList.map(pos => (
-              <div key={pos.id} className="p-4 border-bottom d-flex align-items-start justify-content-between">
+            {posList.map(pos => {
+              // hasManager: match pos_name + role=pos_manager, status không được là locked/inactive
+              const hasManager = users.some(u =>
+                u.pos_name === pos.name &&
+                u.role === 'pos_manager' &&
+                u.status !== 'locked' && u.status !== 'inactive'
+              );
+              return (
+              <div key={pos.id} className={`p-4 border-bottom d-flex align-items-start justify-content-between ${pos.status === 'inactive' ? 'opacity-50 bg-light' : ''}`}>
                 <div>
                   <div className="d-flex align-items-center gap-2 mb-1">
                     <span className="fw-semibold fs-6">{pos.name}</span>
-                    <span className={`badge ${pos.status === 'active' ? 'bg-success' : 'bg-secondary'}`}>
-                      {pos.status === 'active' ? '✅ Đang hoạt động' : '⛔ Vô hiệu hóa'}
+                    <span className={`badge ${pos.status === 'active' ? 'bg-success' : 'bg-danger'}`}>
+                      {pos.status === 'active' ? '✅ Đang hoạt động' : '🚫 Vô hiệu hóa'}
                     </span>
+                    {pos.status === 'active' && !hasManager && (
+                      <span className="badge bg-warning text-dark"><i className="bi bi-exclamation-triangle me-1"></i>Thiếu GĐ</span>
+                    )}
                   </div>
-                  <div className="text-muted small mb-1"><i className="bi bi-person me-1"></i>GĐ POS: <strong>{pos.manager}</strong></div>
-                  <div className="text-muted small"><i className="bi bi-house me-1"></i>{pos.propCount} tài sản trong kho</div>
-                  {pos.status !== 'active' && (
-                    <div className="alert alert-warning py-1 px-2 small mt-2 mb-0">
-                      <i className="bi bi-info-circle me-1"></i>POS vô hiệu hóa không nhận tài sản mới.
-                    </div>
-                  )}
+                  <div className="text-muted small mb-1"><i className="bi bi-person me-1"></i>GĐ POS: <strong className={!hasManager ? 'text-danger' : ''}>{pos.manager || 'Chưa gán'}</strong></div>
+                  <div className="text-muted small"><i className="bi bi-house me-1"></i>POS ID: {pos.id}</div>
                 </div>
-                <div className="d-flex flex-column gap-1">
-                  <button className={`btn btn-sm ${pos.status === 'active' ? 'btn-outline-secondary' : 'btn-outline-success'}`}
-                    onClick={() => { setSelected(pos); setModalMode('pos_detail'); }}>
+                <div className="d-flex flex-column gap-2">
+                  <button className="btn btn-sm btn-outline-secondary" onClick={() => { setSelected(pos); setModalMode('pos_detail'); }}>
                     <i className="bi bi-eye me-1"></i>Chi tiết
                   </button>
+                  {ROLE === 'admin' && (
+                    <button className="btn btn-sm btn-outline-primary" onClick={() => { setEditPos({ ...pos, manager_id: '', manager_name: '', manager_user: null }); setModalMode('edit_pos'); }}>
+                      <i className="bi bi-pencil me-1"></i>Sửa / Inactive
+                    </button>
+                  )}
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         </div>
       )}
@@ -447,13 +636,13 @@ export default function Feature10_IAM() {
         </div>
       )}
 
-      {/* MODAL: Unlock */}
+      {/* MODAL: Unlock / Phục hồi */}
       {modalMode === 'unlock' && selected && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content border-0 shadow-lg">
               <div className="modal-header bg-success text-white border-0">
-                <h5 className="modal-title fw-bold"><i className="bi bi-unlock me-2"></i>Mở khóa Tài khoản</h5>
+                <h5 className="modal-title fw-bold"><i className="bi bi-unlock me-2"></i>Phục hồi Tài khoản</h5>
                 <button className="btn-close btn-close-white" onClick={() => setModalMode(null)}></button>
               </div>
               <div className="modal-body p-4">
@@ -464,14 +653,51 @@ export default function Feature10_IAM() {
                 </div>
                 <div className="alert alert-info small">
                   <i className="bi bi-arrow-counterclockwise me-1"></i>
-                  Tài khoản sẽ được phục hồi trạng thái <strong>"Đang hoạt động"</strong> và có thể đăng nhập bình thường.
+                  Tài khoản sẽ được phục hồi trạng thái <strong>"Đang hoạt động"</strong> và có thể đăng nhập lại bình thường.
                 </div>
               </div>
               <div className="modal-footer border-0">
                 <button className="btn btn-outline-secondary" onClick={() => setModalMode(null)}>Hủy</button>
                 <button className="btn btn-success fw-bold px-4" onClick={handleUnlock} disabled={submitting}>
                   {submitting ? <span className="spinner-border spinner-border-sm me-2"></span> : null}
-                  Xác nhận Mở khóa
+                  Xác nhận Phục hồi
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Inactive User (Nghỉ việc) */}
+      {modalMode === 'inactive_user' && selected && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg">
+              <div className="modal-header bg-danger text-white border-0">
+                <h5 className="modal-title fw-bold"><i className="bi bi-person-dash me-2"></i>Báo Nghỉ Việc Nhân Sự</h5>
+                <button className="btn-close btn-close-white" onClick={() => setModalMode(null)}></button>
+              </div>
+              <div className="modal-body p-4">
+                <div className="alert alert-light border border-danger mb-3">
+                  <div className="fw-semibold">{selected.name}</div>
+                  <div className="small text-muted">{ROLE_LABEL[selected.role]} · {selected.pos_name}</div>
+                </div>
+                <div className="alert alert-warning small">
+                  <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                  Hành động này sẽ đánh dấu nhân sự là <strong>"Đã nghỉ việc" (Inactive)</strong>. Tài khoản bị vô hiệu hóa vĩnh viễn quyền đăng nhập, không còn nằm trong danh sách hoạt động, nhưng dữ liệu lịch sử tài sản không bị xóa.
+                </div>
+                {selected.role === 'pos_manager' && (
+                  <div className="alert alert-danger small mb-0">
+                    <i className="bi bi-shield-lock-fill me-1"></i>
+                    <strong>Chú ý:</strong> Đây là Giám đốc POS! Khi báo nghỉ việc, POS <strong>{selected.pos_name}</strong> sẽ thiếu Giám đốc và hệ thống sẽ bật cảnh báo bảo mật ở F10.
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer border-0">
+                <button className="btn btn-outline-secondary" onClick={() => setModalMode(null)}>Hủy</button>
+                <button className="btn btn-danger fw-bold px-4" onClick={handleInactiveUser} disabled={submitting}>
+                  {submitting ? <span className="spinner-border spinner-border-sm me-2"></span> : null}
+                  Xác nhận Nghỉ việc
                 </button>
               </div>
             </div>
@@ -500,6 +726,15 @@ export default function Feature10_IAM() {
                   </select>
                 </div>
                 <div className="row g-2 mb-3">
+                  <div className="col-12">
+                    <label className="form-label fw-semibold small">Thuộc POS (Chi nhánh)</label>
+                    <select className="form-select form-select-sm" value={newUser.pos_name} onChange={e => setNewUser({ ...newUser, pos_name: e.target.value })}>
+                      <option value="">-- Chọn POS --</option>
+                      {posList.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="row g-2 mb-3">
                   <div className="col-6">
                     <label className="form-label fw-semibold small">Email</label>
                     <input className="form-control form-control-sm" type="email" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} placeholder="email@ihouzz.com" />
@@ -519,6 +754,180 @@ export default function Feature10_IAM() {
                 <button className="btn btn-primary fw-bold px-4" onClick={handleCreateUser} disabled={submitting || !newUser.name.trim()}>
                   {submitting ? <span className="spinner-border spinner-border-sm me-2"></span> : null}
                   Tạo tài khoản
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Edit User */}
+      {modalMode === 'edit' && editUser && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg">
+              <div className="modal-header bg-primary text-white border-0">
+                <h5 className="modal-title fw-bold"><i className="bi bi-pencil me-2"></i>Chỉnh sửa Tài khoản</h5>
+                <button className="btn-close btn-close-white" onClick={() => { setModalMode(null); setEditUser(null); }}></button>
+              </div>
+              <div className="modal-body p-4">
+                <div className="mb-3">
+                  <label className="form-label fw-semibold small">Họ tên <span className="text-danger">*</span></label>
+                  <input className="form-control" value={editUser.name} onChange={e => setEditUser({ ...editUser, name: e.target.value })} placeholder="Nguyễn Văn A" />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label fw-semibold small">Vai trò <span className="text-danger">*</span></label>
+                  <select className="form-select" value={editUser.role} onChange={e => setEditUser({ ...editUser, role: e.target.value })}>
+                    {ROLES.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                  </select>
+                </div>
+                <div className="row g-2 mb-3">
+                  <div className="col-12">
+                    <label className="form-label fw-semibold small">Thuộc POS (Chi nhánh)</label>
+                    <select className="form-select form-select-sm" value={editUser.pos_name} onChange={e => setEditUser({ ...editUser, pos_name: e.target.value })}>
+                      <option value="">-- Chọn POS --</option>
+                      {posList.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="row g-2 mb-3">
+                  <div className="col-6">
+                    <label className="form-label fw-semibold small">Email</label>
+                    <input className="form-control form-control-sm" type="email" value={editUser.email || ''} onChange={e => setEditUser({ ...editUser, email: e.target.value })} placeholder="email@ihouzz.com" />
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label fw-semibold small">Số điện thoại</label>
+                    <input className="form-control form-control-sm" value={editUser.phone || ''} onChange={e => setEditUser({ ...editUser, phone: e.target.value })} placeholder="09xx xxx xxx" />
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer border-0">
+                <button className="btn btn-outline-secondary" onClick={() => { setModalMode(null); setEditUser(null); }}>Hủy</button>
+                <button className="btn btn-primary fw-bold px-4" onClick={handleEditUser} disabled={submitting || !editUser.name.trim()}>
+                  {submitting ? <span className="spinner-border spinner-border-sm me-2"></span> : null}
+                  Cập nhật
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Create POS */}
+      {modalMode === 'create_pos' && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg">
+              <div className="modal-header bg-warning text-dark border-0">
+                <h5 className="modal-title fw-bold"><i className="bi bi-building-add me-2"></i>Tạo POS Mới</h5>
+                <button className="btn-close" onClick={() => setModalMode(null)}></button>
+              </div>
+              <div className="modal-body p-4">
+                <div className="mb-3">
+                  <label className="form-label fw-semibold small">Tên POS <span className="text-danger">*</span></label>
+                  <input className="form-control" value={newPos.name} onChange={e => setNewPos({ ...newPos, name: e.target.value })} placeholder="VD: POS Q1, POS Thủ Đức..." />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label fw-semibold small">ID Tài khoản Giám đốc POS</label>
+                  <input className="form-control" value={newPos.manager_id} onChange={e => {
+                    const val = e.target.value;
+                    const valTrim = val.trim();
+                    const found = users.find(u => u.id === valTrim || u.email === valTrim);
+                    setNewPos({ ...newPos, manager_id: val, manager_name: found ? found.name : '', manager_user: found || null });
+                  }} placeholder="Nhập ID (vd: u002) hoặc Email..." />
+                  
+                  {newPos.manager_id && newPos.manager_user && (
+                    <div className="alert alert-warning mt-2 py-2 px-3 small mb-0 border-warning">
+                      <div className="text-success fw-bold mb-1"><i className="bi bi-check-circle me-1"></i>Họ tên GĐ: {newPos.manager_name}</div>
+                      {newPos.manager_user.pos_name && (
+                        <div className="text-danger fw-semibold">
+                          <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                          Hiện đang là {ROLE_LABEL[newPos.manager_user.role] || newPos.manager_user.role} tại {newPos.manager_user.pos_name}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {newPos.manager_id && !newPos.manager_user && (
+                    <div className="form-text text-danger mt-2"><i className="bi bi-x-circle me-1"></i>Không tìm thấy nhân sự! Hãy tạo tài khoản trước.</div>
+                  )}
+                </div>
+                <div className="alert alert-info small">
+                  <i className="bi bi-info-circle me-1"></i>
+                  Khi gán thành công, hệ thống sẽ tự động cập nhật tài khoản này thành <strong>Giám đốc POS</strong> và gán vào POS mới. Hệ thống sẽ có cảnh báo xác nhận nếu luân chuyển.
+                </div>
+              </div>
+              <div className="modal-footer border-0">
+                <button className="btn btn-outline-secondary" onClick={() => setModalMode(null)}>Hủy</button>
+                <button className="btn btn-warning fw-bold px-4 text-dark" onClick={handleCreatePos} disabled={submitting || !newPos.name.trim()}>
+                  {submitting ? <span className="spinner-border spinner-border-sm me-2"></span> : null}
+                  Tạo POS
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Edit POS */}
+      {modalMode === 'edit_pos' && editPos && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg">
+              <div className="modal-header bg-primary text-white border-0">
+                <h5 className="modal-title fw-bold"><i className="bi bi-building-gear me-2"></i>Chỉnh sửa / Vô hiệu hóa POS</h5>
+                <button className="btn-close btn-close-white" onClick={() => { setModalMode(null); setEditPos(null); }}></button>
+              </div>
+              <div className="modal-body p-4">
+                <div className="mb-3">
+                  <label className="form-label fw-semibold small">Tên POS <span className="text-danger">*</span></label>
+                  <input className="form-control" value={editPos.name} onChange={e => setEditPos({ ...editPos, name: e.target.value })} />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label fw-semibold small">Đổi Giám đốc POS (Nhập ID/Email)</label>
+                  <input className="form-control" value={editPos.manager_id} onChange={e => {
+                    const val = e.target.value;
+                    const valTrim = val.trim();
+                    const found = users.find(u => u.id === valTrim || u.email === valTrim);
+                    setEditPos({ ...editPos, manager_id: val, manager_name: found ? found.name : '', manager_user: found || null });
+                  }} placeholder="Bỏ trống nếu không muốn đổi..." />
+                  
+                  {editPos.manager_id && editPos.manager_user && (
+                    <div className="alert alert-warning mt-2 py-2 px-3 small mb-0 border-warning">
+                      <div className="text-success fw-bold mb-1"><i className="bi bi-check-circle me-1"></i>Họ tên GĐ Mới: {editPos.manager_name}</div>
+                      {editPos.manager_user.pos_name && (
+                        <div className="text-danger fw-semibold">
+                          <i className="bi bi-exclamation-triangle-fill me-1"></i>
+                          Sẽ bị luân chuyển từ {ROLE_LABEL[editPos.manager_user.role] || editPos.manager_user.role} tại {editPos.manager_user.pos_name}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {editPos.manager_id && !editPos.manager_user && (
+                    <div className="form-text text-danger mt-2"><i className="bi bi-x-circle me-1"></i>Không tìm thấy nhân sự!</div>
+                  )}
+                  {!editPos.manager_id && (
+                    <div className="form-text text-muted mt-1"><i className="bi bi-info-circle me-1"></i>GĐ hiện tại: <strong>{editPos.manager || 'Chưa gán'}</strong></div>
+                  )}
+                </div>
+                <div className="mb-3">
+                  <label className="form-label fw-semibold small">Trạng thái hoạt động</label>
+                  <select className="form-select" value={editPos.status} onChange={e => setEditPos({ ...editPos, status: e.target.value })}>
+                    <option value="active">✅ Đang hoạt động</option>
+                    <option value="inactive">🚫 Vô hiệu hóa (Inactive)</option>
+                  </select>
+                </div>
+                {editPos.status === 'inactive' && (
+                  <div className="alert alert-danger small">
+                    <i className="bi bi-x-octagon-fill me-1"></i>
+                    POS bị <strong>Vô hiệu hóa</strong> sẽ không nhận tài sản mới và hiển thị mờ trong danh sách.
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer border-0">
+                <button className="btn btn-outline-secondary" onClick={() => { setModalMode(null); setEditPos(null); }}>Hủy</button>
+                <button className="btn btn-primary fw-bold px-4" onClick={handleEditPos} disabled={submitting || !editPos.name.trim()}>
+                  {submitting ? <span className="spinner-border spinner-border-sm me-2"></span> : null}
+                  Cập nhật POS
                 </button>
               </div>
             </div>

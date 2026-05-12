@@ -1,37 +1,45 @@
 import { useState, useEffect } from 'react';
+
 const API = 'http://localhost:5000';
+
+const userStr = localStorage.getItem('user');
+const userObj = userStr ? JSON.parse(userStr) : {};
+const rawRole = userObj.role || 'sales';
+const ROLE = rawRole === 'pos' ? 'pos_manager' : rawRole === 'mkt' ? 'marketing' : rawRole;
+const currentPosName = userObj.pos_name || '';
+const USER_ID = userObj.id || '';
 
 const CAN_UNSOURCE = ['Chưa niêm yết', 'Thẩm định phí'];
 
-function Toast({ toast }) {
-  if (!toast) return null;
-  return (
-    <div className={`alert alert-${toast.type} d-flex align-items-center gap-2 mb-3`}>
-      <i className={`bi ${toast.type === 'success' ? 'bi-check-circle-fill' : 'bi-x-circle-fill'}`}></i>
-      {toast.msg}
-    </div>
-  );
-}
+const STATUS_CONFIG = {
+  'Được duyệt':          { bg: 'success', text: 'white', icon: '✅' },
+  'Được đảm bảo':        { bg: 'warning', text: 'dark', icon: '🛡️' },
+  'Chờ duyệt gỡ nguồn':  { bg: 'danger',  text: 'white', icon: '⏳' },
+  'Đã gỡ nguồn':         { bg: 'dark',    text: 'white', icon: '🚫' },
+};
+
+// Format mã LS chuẩn
+const formatLSId = (id) => {
+  if (!id) return '';
+  if (id.startsWith('LS-')) return id;
+  return `LS-${id.substring(0, 5).toUpperCase()}`;
+};
 
 export default function Feature8_Unsource() {
   const [properties, setProperties] = useState([]);
-  const [logs, setLogs] = useState([]);
-  const [tab, setTab] = useState('sales'); // 'sales' | 'pos' | 'history'
   const [selected, setSelected] = useState(null);
-  const [modalMode, setModalMode] = useState(null); // 'request'|'approve'|'reject'
+  const [mode, setMode] = useState(null); // 'request' | 'approve' | 'reject' | 'view'
   const [unsourceNote, setUnsourceNote] = useState('');
   const [rejectNote, setRejectNote] = useState('');
+  const [filterStatus, setFilterStatus] = useState(ROLE === 'sales' ? 'eligible' : 'pending');
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { loadData(); }, []);
 
-  const loadAll = async () => {
-    const [p, lg] = await Promise.all([
-      fetch(`${API}/properties`).then(r => r.json()),
-      fetch(`${API}/logs`).then(r => r.json()),
-    ]);
-    setProperties(p); setLogs(lg);
+  const loadData = async () => {
+    const p = await fetch(`${API}/properties`).then(r => r.json());
+    setProperties(p);
   };
 
   const showToast = (msg, type = 'success') => {
@@ -43,7 +51,7 @@ export default function Feature8_Unsource() {
     await fetch(`${API}/logs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timestamp: new Date().toISOString(), action, entityId, user: 'Demo User' }),
+      body: JSON.stringify({ timestamp: new Date().toISOString(), action, entityId, user: userObj.name || 'Demo User' }),
     });
   };
 
@@ -52,36 +60,50 @@ export default function Feature8_Unsource() {
     body: JSON.stringify({ ...data, updatedAt: new Date().toISOString() }),
   });
 
+  const filtered = properties.filter(p => {
+    // Lọc theo POS: admin thấy hết, còn lại thấy POS mình
+    if (ROLE !== 'admin' && p.pos_name !== currentPosName) return false;
+
+    if (filterStatus === 'eligible') {
+      return ['Được duyệt','Được đảm bảo'].includes(p.level1_status) && p.level1_status !== 'Đã gỡ nguồn' && p.level1_status !== 'Chờ duyệt gỡ nguồn';
+    }
+    if (filterStatus === 'pending') return p.level1_status === 'Chờ duyệt gỡ nguồn';
+    if (filterStatus === 'approved') return p.level1_status === 'Đã gỡ nguồn';
+    return true; // 'all'
+  });
+
+  const eligibleCount = properties.filter(p => (ROLE === 'admin' || p.pos_name === currentPosName) && ['Được duyệt','Được đảm bảo'].includes(p.level1_status) && p.level1_status !== 'Đã gỡ nguồn' && p.level1_status !== 'Chờ duyệt gỡ nguồn').length;
+  const pendingCount = properties.filter(p => (ROLE === 'admin' || p.pos_name === currentPosName) && p.level1_status === 'Chờ duyệt gỡ nguồn').length;
+  const approvedCount = properties.filter(p => (ROLE === 'admin' || p.pos_name === currentPosName) && p.level1_status === 'Đã gỡ nguồn').length;
+
   // UC008: Sales request unsource
   const handleRequestUnsource = async () => {
     const canDo = CAN_UNSOURCE.includes(selected.level2_status);
     if (!canDo) {
       showToast('⛔ BR-010: Phải Gỡ tin (F6→F7) trước khi Gỡ nguồn!', 'danger');
-      setModalMode(null); return;
+      return;
     }
     setSubmitting(true);
     await patchProp(selected.id, {
       level1_status: 'Chờ duyệt gỡ nguồn',
       unsource_note: unsourceNote,
       unsourceRequestedAt: new Date().toISOString(),
-      unsourceRequestedBy: 'Đầu chủ Demo',
+      unsourceRequestedBy: userObj.name || 'Đầu chủ',
     });
     await postLog(`[F8-UC008] Sales yêu cầu gỡ nguồn · Ghi chú: ${unsourceNote || 'N/A'}`, selected.id);
     showToast(`✅ Đã gửi yêu cầu gỡ nguồn ${selected.id} đến GĐ POS.`);
-    setSelected(null); setModalMode(null); setUnsourceNote('');
-    setSubmitting(false); loadAll(); setTab('pos');
+    setSelected(null); setMode(null); setUnsourceNote('');
+    setSubmitting(false); loadData();
   };
 
   // UC009: GĐ POS approve
   const handleApprove = async () => {
     setSubmitting(true);
     const now = new Date().toISOString();
-    // Update property Lv1 + Lv2 simultaneously
     await patchProp(selected.id, {
       level1_status: 'Đã gỡ nguồn', level2_status: 'Đã gỡ nguồn',
-      unsourceApprovedBy: 'GĐ POS Demo', unsourceApprovedAt: now,
+      unsourceApprovedBy: userObj.name || 'GĐ POS', unsourceApprovedAt: now,
     });
-    // CASCADE: auto-update all listings of this property (BR-005 cascade)
     try {
       const allListings = await fetch(`${API}/listings`).then(r => r.json());
       const related = allListings.filter(l => l.property_id === selected.id && l.listing_status !== 'Đã gỡ');
@@ -92,10 +114,9 @@ export default function Feature8_Unsource() {
     } catch (_) {}
     await postLog(`[F8-UC009] GĐ POS duyệt gỡ nguồn → Lv1+Lv2="Đã gỡ nguồn" + CASCADE listings`, selected.id);
     showToast(`✅ Đã duyệt gỡ nguồn ${selected.id}. Tài sản ẩn khỏi mặc định. Listings liên quan đã gỡ.`);
-    setSelected(null); setModalMode(null);
-    setSubmitting(false); loadAll();
+    setSelected(null); setMode(null);
+    setSubmitting(false); loadData();
   };
-
 
   // UC009: GĐ POS reject
   const handleReject = async () => {
@@ -104,363 +125,262 @@ export default function Feature8_Unsource() {
     const prev = selected.prev_level1 || 'Được duyệt';
     await patchProp(selected.id, {
       level1_status: prev, unsource_note: null,
-      unsourceRejectedBy: 'GĐ POS Demo',
+      unsourceRejectedBy: userObj.name || 'GĐ POS',
       unsourceRejectedAt: new Date().toISOString(),
       unsourceRejectNote: rejectNote,
     });
     await postLog(`[F8-UC009] GĐ POS từ chối gỡ nguồn · Lý do: ${rejectNote}`, selected.id);
     showToast(`↩️ Đã từ chối gỡ nguồn ${selected.id}. Tài sản phục hồi trạng thái.`, 'warning');
-    setSelected(null); setModalMode(null); setRejectNote('');
-    setSubmitting(false); loadAll();
+    setSelected(null); setMode(null); setRejectNote('');
+    setSubmitting(false); loadData();
   };
 
-  const salesProps = properties.filter(p =>
-    ['Được duyệt','Được đảm bảo','Chưa niêm yết'].includes(p.level1_status) &&
-    p.level1_status !== 'Đã gỡ nguồn' && p.level1_status !== 'Chờ duyệt gỡ nguồn'
-  );
-  const pendingUnsource = properties.filter(p => p.level1_status === 'Chờ duyệt gỡ nguồn');
-  const historyProps = properties.filter(p => p.level1_status === 'Đã gỡ nguồn');
-
-  const lv2Color = { 'Chưa niêm yết':'secondary','Đang niêm yết':'success','Thẩm định phí':'info','Đã gỡ nguồn':'dark' };
-  const lv1Color = { 'Được duyệt':'success','Được đảm bảo':'warning','Chờ duyệt gỡ nguồn':'danger','Đã gỡ nguồn':'dark' };
-
   return (
-    <div style={{ minHeight:'100vh', background:'#fff8f0', padding:24 }}>
+    <div style={{ minHeight: '100vh', background: '#fff8f0', padding: '24px' }}>
       {/* Header */}
-      <div className="d-flex align-items-start justify-content-between mb-4">
+      <div className="d-flex align-items-center justify-content-between mb-4">
         <div>
-          <h4 className="fw-bold mb-1" style={{ color:'#7b2d00' }}>
-            <i className="bi bi-x-octagon-fill text-danger me-2"></i>
-            Feature 8 – Yêu cầu & Phê duyệt Gỡ nguồn (UC008 + UC009)
+          <h4 className="fw-bold mb-0" style={{ color: '#7b2d00' }}>
+            <i className="bi bi-x-octagon-fill text-danger me-2"></i>Feature 8 – Gỡ Nguồn Tài Sản (UC008 + UC009)
           </h4>
-          <small className="text-muted">UC008: Đầu chủ gửi yêu cầu · UC009: GĐ POS phê duyệt · BR-010 Validation</small>
+          <small className="text-muted">Đầu chủ yêu cầu & GĐ POS duyệt | BR-010 Validation</small>
         </div>
-        <div className="d-flex gap-2">
-          {pendingUnsource.length > 0 && (
-            <span className="badge bg-danger fs-6 px-3 py-2">
-              <i className="bi bi-bell-fill me-1"></i>{pendingUnsource.length} chờ GĐ POS
-            </span>
-          )}
-          <span className="badge bg-warning text-dark px-3 py-2">BR-010</span>
-        </div>
+        <span className="badge bg-danger px-3 py-2">BR-010: Gỡ tin trước khi Gỡ nguồn</span>
       </div>
 
-      <Toast toast={toast} />
-
-      {/* BR-010 rule banner */}
-      <div className="alert alert-danger d-flex align-items-start gap-2 mb-4 py-2">
-        <i className="bi bi-shield-exclamation fs-5 flex-shrink-0 mt-1"></i>
-        <div className="small">
-          <strong>BR-010:</strong> Chỉ được Gỡ nguồn khi Level 2 ∈ {'{'}
-          <strong>"Chưa niêm yết"</strong>, <strong>"Thẩm định phí"</strong>
-          {'}'}. Nếu Level 2 = "Đang niêm yết" → Phải thực hiện UC006 → UC007 trước.
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="card border-0 shadow-sm mb-4">
-        <div className="card-body py-2 d-flex gap-2">
-          <button className={`btn btn-sm ${tab==='sales'?'btn-warning':'btn-outline-warning'}`}
-            onClick={() => setTab('sales')}>
-            <i className="bi bi-person me-1"></i>Đầu chủ – Gửi yêu cầu (UC008)
-          </button>
-          <button className={`btn btn-sm ${tab==='pos'?'btn-danger':'btn-outline-danger'}`}
-            onClick={() => setTab('pos')}>
-            <i className="bi bi-shield-check me-1"></i>GĐ POS – Phê duyệt (UC009)
-            {pendingUnsource.length > 0 && <span className="badge bg-light text-danger ms-1">{pendingUnsource.length}</span>}
-          </button>
-          <button className={`btn btn-sm ${tab==='history'?'btn-dark':'btn-outline-dark'}`}
-            onClick={() => setTab('history')}>
-            <i className="bi bi-archive me-1"></i>Đã gỡ nguồn ({historyProps.length})
-          </button>
-        </div>
-      </div>
-
-      {/* TAB: SALES */}
-      {tab === 'sales' && (
-        <div className="card border-0 shadow-sm">
-          <div className="card-header border-0 fw-bold bg-white">
-            <i className="bi bi-building me-1"></i>Tài sản có thể yêu cầu Gỡ nguồn ({salesProps.length})
-            <span className="text-muted small ms-2 fw-normal">— Chọn tài sản để gửi yêu cầu</span>
-          </div>
-          <div className="card-body p-0">
-            {salesProps.length === 0 && (
-              <div className="text-center py-5 text-muted">
-                <i className="bi bi-inbox fs-2"></i><p className="mt-2">Không có tài sản phù hợp.</p>
-              </div>
-            )}
-            {salesProps.map(p => {
-              const canDo = CAN_UNSOURCE.includes(p.level2_status);
-              return (
-                <div key={p.id} className="p-3 border-bottom d-flex align-items-start gap-3">
-                  <div className="flex-grow-1">
-                    <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                      <span className="badge bg-dark">{p.id}</span>
-                      <span className={`badge bg-${lv1Color[p.level1_status]||'secondary'} text-${p.level1_status==='Được đảm bảo'?'dark':''}`}>
-                        Lv1: {p.level1_status}
-                      </span>
-                      <span className={`badge bg-${lv2Color[p.level2_status]||'secondary'}`}>
-                        Lv2: {p.level2_status}
-                      </span>
-                      {canDo
-                        ? <span className="badge bg-success">✅ Đủ điều kiện BR-010</span>
-                        : <span className="badge bg-danger">🚫 Bị chặn BR-010</span>
-                      }
-                    </div>
-                    <div className="fw-semibold small">{p.address}</div>
-                    <div className="text-muted small">{p.pos_name} · {p.type} · {p.area}m² · {p.price_display}</div>
-                    {!canDo && (
-                      <div className="alert alert-danger py-1 px-2 small mt-2 mb-0">
-                        <i className="bi bi-lock-fill me-1"></i>
-                        Level 2 đang <strong>"{p.level2_status}"</strong> — Phải Gỡ tin (F6→F7) trước!
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    className={`btn btn-sm flex-shrink-0 ${canDo ? 'btn-outline-danger' : 'btn-secondary'}`}
-                    disabled={!canDo}
-                    onClick={() => { setSelected(p); setModalMode('request'); setUnsourceNote(''); }}>
-                    <i className="bi bi-x-octagon me-1"></i>Gỡ nguồn
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+      {toast && (
+        <div className={`alert alert-${toast.type} d-flex align-items-center mb-3`}>
+          {toast.msg}
         </div>
       )}
 
-      {/* TAB: GĐ POS */}
-      {tab === 'pos' && (
-        <div className="card border-0 shadow-sm">
-          <div className="card-header border-0 fw-bold bg-white">
-            <i className="bi bi-shield-check text-danger me-1"></i>
-            Yêu cầu Gỡ nguồn chờ phê duyệt ({pendingUnsource.length})
-          </div>
-          <div className="card-body p-0">
-            {pendingUnsource.length === 0 && (
-              <div className="text-center py-5 text-muted">
-                <i className="bi bi-inbox fs-2"></i><p className="mt-2">Không có yêu cầu nào đang chờ.</p>
-              </div>
-            )}
-            {pendingUnsource.map(p => (
-              <div key={p.id} className="p-4 border-bottom">
-                <div className="row align-items-center">
-                  <div className="col-md-7">
-                    <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
-                      <span className="badge bg-dark">{p.id}</span>
-                      <span className="badge bg-danger">Chờ duyệt gỡ nguồn</span>
-                    </div>
-                    <div className="fw-semibold mb-1">{p.address}</div>
-                    <div className="text-muted small mb-1">
-                      <span className="me-3"><i className="bi bi-building me-1"></i>{p.pos_name}</span>
-                      <span><i className="bi bi-person me-1"></i>{p.unsourceRequestedBy || p.createdBy}</span>
-                    </div>
-                    <div className="text-muted small mb-2">
-                      <i className="bi bi-clock me-1"></i>
-                      {p.unsourceRequestedAt ? new Date(p.unsourceRequestedAt).toLocaleString('vi-VN') : ''}
-                    </div>
-                    {p.unsource_note && (
-                      <div className="alert alert-light border py-2 px-2 small mb-2">
-                        <i className="bi bi-chat-left-dots me-1"></i>
-                        <strong>Ghi chú:</strong> {p.unsource_note}
-                      </div>
-                    )}
-                    <div className="alert alert-danger py-1 px-2 small mb-0">
-                      <i className="bi bi-lightning-charge me-1"></i>
-                      <strong>Nếu duyệt:</strong> Level 1 + Level 2 → <strong>"Đã gỡ nguồn"</strong> đồng thời. Tài sản ẩn khỏi default view.
-                    </div>
-                  </div>
-                  <div className="col-md-2 text-center">
-                    <div className="small text-muted mb-1">Level 2</div>
-                    <span className={`badge bg-${lv2Color[p.level2_status]||'secondary'}`}>{p.level2_status}</span>
-                    <div className="small text-muted mt-2">{p.type} · {p.area}m²</div>
-                    <div className="small fw-semibold">{p.price_display}</div>
-                  </div>
-                  <div className="col-md-3 d-flex flex-column gap-2">
-                    <button className="btn btn-success fw-semibold"
-                      onClick={() => { setSelected(p); setModalMode('approve'); }}>
-                      <i className="bi bi-check-circle me-1"></i>Duyệt Gỡ nguồn
-                    </button>
-                    <button className="btn btn-outline-danger"
-                      onClick={() => { setSelected(p); setModalMode('reject'); setRejectNote(''); }}>
-                      <i className="bi bi-x-circle me-1"></i>Từ chối
-                    </button>
-                  </div>
+      {/* Stats */}
+      <div className="row g-3 mb-4">
+        {[
+          { label: 'Đủ điều kiện gỡ', count: eligibleCount, color: '#1565c0', icon: 'bi-building', filter: 'eligible' },
+          { label: 'Chờ duyệt gỡ', count: pendingCount, color: '#f57c00', icon: 'bi-hourglass-split', filter: 'pending' },
+          { label: 'Đã gỡ nguồn', count: approvedCount, color: '#212529', icon: 'bi-archive', filter: 'approved' },
+          { label: 'Tổng tài sản', count: properties.filter(p => ROLE === 'admin' || p.pos_name === currentPosName).length, color: '#2e7d32', icon: 'bi-collection', filter: 'all' },
+        ].map((s, i) => (
+          <div key={i} className="col-md-3">
+            <div className="card border-0 shadow-sm h-100" style={{ cursor: 'pointer', borderLeft: `4px solid ${s.color}`, transform: filterStatus === s.filter ? 'scale(1.02)' : 'scale(1)', transition: '0.2s' }}
+              onClick={() => setFilterStatus(s.filter)}>
+              <div className="card-body d-flex align-items-center gap-3">
+                <i className={`bi ${s.icon} fs-2`} style={{ color: s.color }}></i>
+                <div>
+                  <div className="fw-bold fs-3" style={{ color: s.color }}>{s.count}</div>
+                  <div className="text-muted small">{s.label}</div>
                 </div>
+                {filterStatus === s.filter && <i className="bi bi-check-circle-fill ms-auto" style={{ color: s.color }}></i>}
               </div>
-            ))}
+            </div>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
 
-      {/* TAB: HISTORY */}
-      {tab === 'history' && (
-        <div className="card border-0 shadow-sm">
-          <div className="card-header border-0 fw-bold bg-white">
-            <i className="bi bi-archive me-1"></i>Tài sản đã Gỡ nguồn ({historyProps.length})
-            <span className="badge bg-secondary ms-2 small">Không xóa DB · Ẩn khỏi default view</span>
-          </div>
-          <div className="card-body p-0">
-            {historyProps.length === 0 && (
-              <div className="text-center py-5 text-muted">
-                <i className="bi bi-folder2-open fs-2"></i><p className="mt-2">Chưa có tài sản nào được gỡ nguồn.</p>
+      <div className="row g-4">
+        {/* Properties list */}
+        <div className="col-12">
+          <div className="card border-0 shadow-sm">
+            <div className="card-header border-0 d-flex align-items-center justify-content-between" style={{ background: '#fdede8' }}>
+              <span className="fw-bold"><i className="bi bi-list-ul me-1"></i>Danh sách Tài sản ({filtered.length})</span>
+              <div className="btn-group btn-group-sm">
+                {[['eligible','🏢 Đủ ĐK gỡ'],['pending','⏳ Chờ POS duyệt'],['approved','✅ Đã gỡ'],['all','Tất cả']].map(([v, l]) => (
+                  <button key={v} className={`btn ${filterStatus === v ? 'btn-danger' : 'btn-outline-danger'}`} onClick={() => setFilterStatus(v)}>{l}</button>
+                ))}
               </div>
-            )}
-            {historyProps.map(p => (
-              <div key={p.id} className="p-3 border-bottom opacity-75">
-                <div className="d-flex align-items-start justify-content-between">
-                  <div>
-                    <div className="d-flex align-items-center gap-2 mb-1">
-                      <span className="badge bg-dark">{p.id}</span>
-                      <span className="badge bg-secondary">Đã gỡ nguồn</span>
-                    </div>
-                    <div className="fw-semibold small text-muted">{p.address}</div>
-                    <div className="text-muted small">
-                      {p.pos_name} · {p.type} · {p.area}m²
-                    </div>
-                    {p.unsourceApprovedBy && (
-                      <div className="small text-muted mt-1">
-                        <i className="bi bi-check-circle text-success me-1"></i>
-                        Duyệt bởi: {p.unsourceApprovedBy} ·{' '}
-                        {p.unsourceApprovedAt ? new Date(p.unsourceApprovedAt).toLocaleString('vi-VN') : ''}
-                      </div>
+            </div>
+            <div className="card-body p-0" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
+                  <thead className="table-light sticky-top">
+                    <tr>
+                      <th className="small text-muted">Mã Tài Sản</th>
+                      <th className="small text-muted">Địa chỉ</th>
+                      <th className="small text-muted">POS quản lý</th>
+                      <th className="small text-muted">Người tạo</th>
+                      <th className="small text-muted">Ngày tạo</th>
+                      <th className="small text-muted">Trạng thái L1</th>
+                      <th className="small text-muted">Trạng thái L2</th>
+                      <th className="small text-muted text-end">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.length === 0 && (
+                      <tr><td colSpan="8" className="text-center py-5 text-muted"><i className="bi bi-inbox fs-2"></i><p className="mt-2">Không có tài sản nào.</p></td></tr>
                     )}
-                  </div>
-                  <div className="text-end">
-                    <span className="badge bg-dark">Lv1: Đã gỡ nguồn</span><br/>
-                    <span className="badge bg-dark mt-1">Lv2: Đã gỡ nguồn</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Request unsource (UC008) */}
-      {modalMode === 'request' && selected && (
-        <div className="modal show d-block" style={{ backgroundColor:'rgba(0,0,0,0.55)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg">
-              <div className="modal-header bg-warning border-0">
-                <h5 className="modal-title fw-bold">
-                  <i className="bi bi-x-octagon me-2"></i>Yêu cầu Gỡ nguồn (UC008)
-                </h5>
-                <button className="btn-close" onClick={() => { setModalMode(null); setSelected(null); }}></button>
-              </div>
-              <div className="modal-body p-4">
-                <div className="alert alert-warning bg-warning bg-opacity-10 border-warning mb-3">
-                  <div className="fw-semibold">{selected.id}</div>
-                  <div className="small text-muted">{selected.address}</div>
-                  <div className="small mt-1">
-                    Level 2: <span className={`badge bg-${lv2Color[selected.level2_status]||'secondary'}`}>{selected.level2_status}</span>
-                    {' '}→ Đủ điều kiện BR-010 ✅
-                  </div>
-                </div>
-                <div className="mb-3">
-                  <label className="form-label fw-semibold small">Ghi chú lý do gỡ nguồn</label>
-                  <textarea className="form-control" rows={3}
-                    placeholder="VD: Chủ nhà không còn nhu cầu bán, tài sản đã chuyển nhượng nội bộ..."
-                    value={unsourceNote} onChange={e => setUnsourceNote(e.target.value)} />
-                </div>
-                <div className="alert alert-info small">
-                  <i className="bi bi-arrow-right me-1"></i>
-                  Yêu cầu sẽ gửi đến <strong>GĐ POS</strong> để phê duyệt (UC009).
-                </div>
-              </div>
-              <div className="modal-footer border-0">
-                <button className="btn btn-outline-secondary" onClick={() => { setModalMode(null); setSelected(null); }}>Hủy</button>
-                <button className="btn btn-warning fw-bold px-4" onClick={handleRequestUnsource} disabled={submitting}>
-                  {submitting ? <span className="spinner-border spinner-border-sm me-2"></span> : null}
-                  Gửi Yêu cầu Gỡ nguồn
-                </button>
+                    {filtered.map(p => {
+                      const cfg = STATUS_CONFIG[p.level1_status] || { bg: 'secondary', text: 'white', icon: '?' };
+                      const isSelected = selected?.id === p.id;
+                      return (
+                        <tr key={p.id} className={`${isSelected ? 'bg-danger bg-opacity-10' : ''}`} style={{ cursor: 'pointer' }} onClick={() => { setSelected(p); setMode('view'); setRejectNote(''); setUnsourceNote(''); }}>
+                          <td><span className="badge bg-dark">{formatLSId(p.id)}</span></td>
+                          <td className="fw-semibold text-truncate" style={{ maxWidth: 200 }} title={p.address}>{p.address}</td>
+                          <td><span className="badge bg-light text-dark border">{p.pos_name || '—'}</span></td>
+                          <td>{p.createdBy}</td>
+                          <td>{new Date(p.createdAt).toLocaleDateString('vi-VN')}</td>
+                          <td><span className={`badge bg-${cfg.bg} text-${cfg.text}`}>{cfg.icon} {p.level1_status}</span></td>
+                          <td><span className={`badge bg-${p.level2_status==='Đang niêm yết'?'success':'secondary'} text-white`}>{p.level2_status}</span></td>
+                          <td className="text-end">
+                            <i className="bi bi-arrow-right-circle-fill text-danger fs-5"></i>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
         </div>
-      )}
 
-      {/* MODAL: Approve (UC009) */}
-      {modalMode === 'approve' && selected && (
-        <div className="modal show d-block" style={{ backgroundColor:'rgba(0,0,0,0.55)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg">
-              <div className="modal-header bg-danger text-white border-0">
-                <h5 className="modal-title fw-bold">
-                  <i className="bi bi-exclamation-triangle me-2"></i>Xác nhận Duyệt Gỡ nguồn (UC009)
-                </h5>
-                <button className="btn-close btn-close-white" onClick={() => { setModalMode(null); setSelected(null); }}></button>
-              </div>
-              <div className="modal-body p-4">
-                <div className="alert alert-danger mb-3">
-                  <strong>⚠️ Hành động không thể hoàn tác trong luồng thông thường!</strong>
+        {/* Full Screen Modal Preview */}
+        {selected && (() => {
+          const prop = selected;
+          const priceText = prop.price_display || `${Number(prop.price).toLocaleString('en-US')} ${prop.priceUnit || 'VNĐ'}`;
+          const canDoRequest = CAN_UNSOURCE.includes(prop.level2_status) && ['Được duyệt','Được đảm bảo'].includes(prop.level1_status);
+          
+          return (
+            <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1050 }}>
+              <div className="modal-dialog modal-xl modal-dialog-scrollable">
+                <div className="modal-content border-0">
+                  <div className="modal-header bg-light border-bottom">
+                    <h5 className="modal-title fw-bold text-danger"><i className="bi bi-x-octagon me-2"></i>Chi tiết Gỡ Nguồn Tài Sản</h5>
+                    <button type="button" className="btn-close" onClick={() => { setSelected(null); setMode(null); }}></button>
+                  </div>
+                  <div className="modal-body p-0" style={{ backgroundColor: '#f8f9fa' }}>
+                    
+                    {/* Top Alert Action Bar */}
+                    <div className="bg-white p-3 border-bottom shadow-sm d-flex justify-content-between align-items-center sticky-top" style={{ zIndex: 10 }}>
+                      <div>
+                        <span className="badge bg-dark me-2">{prop.id}</span>
+                        <span className={`badge bg-${STATUS_CONFIG[prop.level1_status]?.bg} text-${STATUS_CONFIG[prop.level1_status]?.text} me-2`}>
+                          {STATUS_CONFIG[prop.level1_status]?.icon} L1: {prop.level1_status}
+                        </span>
+                        <span className={`badge bg-${prop.level2_status==='Đang niêm yết'?'success':'secondary'} text-white me-2`}>
+                          L2: {prop.level2_status}
+                        </span>
+                        <span className="text-muted small">Người tạo: {prop.createdBy}</span>
+                      </div>
+                      <div className="d-flex gap-2">
+                        {/* Hành động cho SALES */}
+                        {(ROLE === 'sales' || ROLE === 'admin') && ['Được duyệt','Được đảm bảo'].includes(prop.level1_status) && mode !== 'request' && (
+                          canDoRequest ? (
+                            <button className="btn btn-outline-danger fw-bold" onClick={() => setMode('request')}><i className="bi bi-x-octagon me-1"></i>Gửi Yêu cầu Gỡ nguồn</button>
+                          ) : (
+                            <span className="badge bg-danger p-2"><i className="bi bi-shield-lock me-1"></i>Bị chặn bởi BR-010 (Phải Gỡ tin trước)</span>
+                          )
+                        )}
+                        
+                        {/* Hành động cho POS MANAGER */}
+                        {(ROLE === 'pos_manager' || ROLE === 'admin') && prop.level1_status === 'Chờ duyệt gỡ nguồn' && mode !== 'reject' && (
+                          <>
+                            <button className="btn btn-outline-danger fw-bold" onClick={() => setMode('reject')}><i className="bi bi-x-circle me-1"></i>Từ chối Yêu cầu</button>
+                            <button className="btn btn-danger fw-bold" onClick={handleApprove} disabled={submitting}>
+                              {submitting ? <span className="spinner-border spinner-border-sm me-1"></span> : <i className="bi bi-check-circle me-1"></i>} Phê duyệt Gỡ nguồn
+                            </button>
+                          </>
+                        )}
+
+                        {prop.level1_status === 'Đã gỡ nguồn' && (
+                          <span className="badge bg-dark p-2"><i className="bi bi-archive me-1"></i>Tài sản đã được gỡ nguồn</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Request form overlay (Sales) */}
+                    {mode === 'request' && (
+                      <div className="bg-warning bg-opacity-10 p-3 border-bottom border-warning">
+                        <h6 className="fw-bold text-danger">⚠️ Gửi yêu cầu gỡ nguồn tài sản</h6>
+                        <textarea className="form-control mb-2" rows={2} placeholder="Nhập lý do cần gỡ nguồn..." value={unsourceNote} onChange={e => setUnsourceNote(e.target.value)} />
+                        <div className="d-flex gap-2">
+                          <button className="btn btn-outline-secondary btn-sm" onClick={() => setMode('view')}>Hủy</button>
+                          <button className="btn btn-danger btn-sm" onClick={handleRequestUnsource} disabled={submitting}>Xác nhận Gửi yêu cầu</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Reject form overlay (POS Manager) */}
+                    {mode === 'reject' && (
+                      <div className="bg-danger bg-opacity-10 p-3 border-bottom border-danger">
+                        <h6 className="fw-bold text-danger">❌ Từ chối yêu cầu gỡ nguồn</h6>
+                        <textarea className="form-control mb-2" rows={2} placeholder="Nhập lý do từ chối (bắt buộc)..." value={rejectNote} onChange={e => setRejectNote(e.target.value)} />
+                        <div className="d-flex gap-2">
+                          <button className="btn btn-outline-secondary btn-sm" onClick={() => setMode('view')}>Hủy</button>
+                          <button className="btn btn-danger btn-sm" onClick={handleReject} disabled={submitting}>Xác nhận Từ chối</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Thông tin tài sản (View mode) */}
+                    <div className="container-fluid py-4" style={{ maxWidth: '1200px' }}>
+                      <div className="row g-4">
+                        <div className="col-md-8">
+                          <div className="bg-white p-4 shadow-sm rounded">
+                            <h5 className="fw-bold mb-4">Thông tin chi tiết Tài sản</h5>
+                            <div className="row g-4 mb-4 pb-4 border-bottom">
+                              <div className="col-md-6">
+                                <div className="text-muted small mb-1">Địa chỉ:</div>
+                                <div className="fw-semibold">{prop.address}</div>
+                              </div>
+                              <div className="col-md-3">
+                                <div className="text-muted small mb-1">Giá:</div>
+                                <div className="fw-bold text-primary fs-5">{priceText}</div>
+                              </div>
+                              <div className="col-md-3">
+                                <div className="text-muted small mb-1">Diện tích:</div>
+                                <div className="fw-semibold">{prop.area} m²</div>
+                              </div>
+                            </div>
+                            <div className="row g-4">
+                              <div className="col-md-3 col-6"><div className="text-muted small mb-1">Hình thức:</div><div className="fw-semibold">{prop.type}</div></div>
+                              <div className="col-md-3 col-6"><div className="text-muted small mb-1">Loại hình:</div><div className="fw-semibold">{prop.propertyType || 'Chung cư'}</div></div>
+                              <div className="col-md-3 col-6"><div className="text-muted small mb-1">Phòng ngủ:</div><div className="fw-semibold">{prop.bedrooms} PN</div></div>
+                              <div className="col-md-3 col-6"><div className="text-muted small mb-1">Tầng:</div><div className="fw-semibold">{prop.floor || 'N/A'}</div></div>
+                              <div className="col-md-3 col-6"><div className="text-muted small mb-1">Tình trạng:</div><div className="fw-semibold">{prop.condition || 'N/A'}</div></div>
+                              <div className="col-md-3 col-6"><div className="text-muted small mb-1">Pháp lý:</div><div className="fw-semibold">{prop.legal || 'N/A'}</div></div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="col-md-4">
+                          <div className="bg-white p-4 shadow-sm rounded h-100">
+                            <h5 className="fw-bold mb-4">Lịch sử Gỡ nguồn</h5>
+                            <div className="timeline-wrapper">
+                              {prop.unsourceRequestedAt && (
+                                <div className="mb-3 border-bottom pb-2">
+                                  <div className="fw-semibold text-warning"><i className="bi bi-clock-history me-1"></i>Yêu cầu Gỡ nguồn</div>
+                                  <div className="small text-muted">{new Date(prop.unsourceRequestedAt).toLocaleString('vi-VN')} bởi {prop.unsourceRequestedBy || 'Đầu chủ'}</div>
+                                  <div className="small mt-1">Lý do: {prop.unsource_note || 'Không có ghi chú'}</div>
+                                </div>
+                              )}
+                              {prop.unsourceApprovedAt && (
+                                <div className="mb-3 border-bottom pb-2">
+                                  <div className="fw-semibold text-success"><i className="bi bi-check-circle me-1"></i>Đã phê duyệt Gỡ nguồn</div>
+                                  <div className="small text-muted">{new Date(prop.unsourceApprovedAt).toLocaleString('vi-VN')} bởi {prop.unsourceApprovedBy || 'GĐ POS'}</div>
+                                </div>
+                              )}
+                              {prop.unsourceRejectedAt && (
+                                <div className="mb-3 border-bottom pb-2">
+                                  <div className="fw-semibold text-danger"><i className="bi bi-x-circle me-1"></i>Đã từ chối Gỡ nguồn</div>
+                                  <div className="small text-muted">{new Date(prop.unsourceRejectedAt).toLocaleString('vi-VN')} bởi {prop.unsourceRejectedBy || 'GĐ POS'}</div>
+                                  <div className="small mt-1 text-danger">Lý do từ chối: {prop.unsourceRejectNote || 'Không có'}</div>
+                                </div>
+                              )}
+                              {!prop.unsourceRequestedAt && <div className="text-muted small">Chưa có dữ liệu.</div>}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
                 </div>
-                <div className="alert alert-light border mb-3">
-                  <div className="fw-semibold">{selected.id}</div>
-                  <div className="small text-muted">{selected.address}</div>
-                  <div className="small text-muted mt-1">{selected.pos_name} · {selected.price_display}</div>
-                </div>
-                <div className="alert alert-warning small">
-                  <i className="bi bi-lightning-charge-fill me-1"></i>
-                  <strong>Sau khi duyệt:</strong><br/>
-                  • Level 1: <strong>"Đã gỡ nguồn"</strong><br/>
-                  • Level 2: <strong>"Đã gỡ nguồn"</strong><br/>
-                  • Tài sản <strong>ẩn</strong> khỏi danh sách mặc định (không bị xóa DB)
-                </div>
-              </div>
-              <div className="modal-footer border-0">
-                <button className="btn btn-outline-secondary" onClick={() => { setModalMode(null); setSelected(null); }}>Hủy</button>
-                <button className="btn btn-danger fw-bold px-4" onClick={handleApprove} disabled={submitting}>
-                  {submitting ? <span className="spinner-border spinner-border-sm me-2"></span> : null}
-                  Xác nhận Duyệt Gỡ nguồn
-                </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Reject (UC009) */}
-      {modalMode === 'reject' && selected && (
-        <div className="modal show d-block" style={{ backgroundColor:'rgba(0,0,0,0.55)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg">
-              <div className="modal-header bg-secondary text-white border-0">
-                <h5 className="modal-title fw-bold">
-                  <i className="bi bi-x-circle me-2"></i>Từ chối Yêu cầu Gỡ nguồn
-                </h5>
-                <button className="btn-close btn-close-white" onClick={() => { setModalMode(null); setSelected(null); }}></button>
-              </div>
-              <div className="modal-body p-4">
-                <div className="alert alert-light border mb-3">
-                  <div className="fw-semibold">{selected.id}</div>
-                  <div className="small text-muted">{selected.address}</div>
-                </div>
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">
-                    Lý do từ chối <span className="text-danger">*</span>
-                  </label>
-                  <textarea className="form-control" rows={3} required
-                    placeholder="Nhập lý do từ chối yêu cầu gỡ nguồn..."
-                    value={rejectNote} onChange={e => setRejectNote(e.target.value)} />
-                </div>
-                <div className="alert alert-info small">
-                  <i className="bi bi-arrow-counterclockwise me-1"></i>
-                  Tài sản sẽ phục hồi về trạng thái trước khi yêu cầu gỡ nguồn.
-                </div>
-              </div>
-              <div className="modal-footer border-0">
-                <button className="btn btn-outline-secondary" onClick={() => { setModalMode(null); setSelected(null); }}>Hủy</button>
-                <button className="btn btn-secondary fw-bold px-4" onClick={handleReject}
-                  disabled={submitting || !rejectNote.trim()}>
-                  {submitting ? <span className="spinner-border spinner-border-sm me-2"></span> : null}
-                  Xác nhận Từ chối
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+          );
+        })()}
+      </div>
     </div>
   );
 }

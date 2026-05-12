@@ -1,384 +1,1414 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import {
+  API,
+  readSessionUser,
+  posScopedProperty,
+  postAuditLog,
+  buildLogAction,
+  RESUBMIT_NOTE_MIN,
+  formatListingId,
+  listingSequenceNumber,
+  buildListingTitleFromProperty,
+  buildListingDescriptionFromProperty,
+  mergePreviewImageUrls,
+} from '../utils/listingWorkflow';
+import {
+  MAX_IMAGE_BYTES,
+  MAX_VIDEO_BYTES,
+  readFileAsDataURL,
+  isHttpUrl,
+  fetchMediaByListing,
+  deleteMediaRows,
+  persistMediaItems,
+  splitUrls,
+} from '../utils/mediaLibraryApi';
+import ListingWebsitePreviewModal from '../components/ListingWebsitePreviewModal';
 
-const API = 'http://localhost:3001';
-
-const STATUS_COLOR = {
+const LV1_COLOR = {
   'Được duyệt': 'success',
   'Được đảm bảo': 'warning',
   'Chờ POS duyệt': 'secondary',
   'Bị từ chối': 'danger',
   'Đã gỡ nguồn': 'dark',
-  'Chờ duyệt đảm bảo': 'info',
+};
+const LV2_COLOR = {
+  'Chưa niêm yết': 'secondary',
+  'Đang niêm yết': 'success',
+  'Thẩm định phí': 'info',
+  'Đã gỡ': 'dark',
+  'Chờ chỉnh sửa': 'warning',
+  'Chờ duyệt chỉnh sửa': 'info',
 };
 
-const WAREHOUSE_BADGE = {
-  'Kho chuẩn': { bg: '#0d6efd', icon: '🏢' },
-  'Kho đảm bảo': { bg: '#fd7e14', icon: '🛡️' },
-};
+/** Một dòng ảnh/video trong form (clientKey bất biến trong phiên; mediaLibId khi đã lưu DB) */
+function newClientKey() {
+  return `c_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
 
-export default function Feature4_CreateListing() {
-  const [properties, setProperties] = useState([]);
-  const [selectedProp, setSelectedProp] = useState(null);
-  const [step, setStep] = useState('select'); // select | form | preview | success
-  const [form, setForm] = useState({ title: '', description: '', contact_phone: '', images: [] });
-  const [filterType, setFilterType] = useState('all');
-  const [submitting, setSubmitting] = useState(false);
-  const [toast, setToast] = useState(null);
-  const [search, setSearch] = useState('');
-
-  useEffect(() => { loadProperties(); }, []);
-
-  const loadProperties = async () => {
-    const res = await fetch(`${API}/properties`);
-    const data = await res.json();
-    setProperties(data);
-  };
-
-  const eligible = properties.filter(p =>
-    (p.level1_status === 'Được duyệt' || p.level1_status === 'Được đảm bảo') &&
-    p.level2_status === 'Chưa niêm yết' &&
-    (filterType === 'all' || p.type === filterType) &&
-    (search === '' || p.address.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  const ineligible = properties.filter(p =>
-    !(p.level1_status === 'Được duyệt' || p.level1_status === 'Được đảm bảo') ||
-    p.level2_status !== 'Chưa niêm yết'
-  );
-
-  const autoFill = (prop) => {
-    setSelectedProp(prop);
-    const typeLabel = prop.type === 'Bán' ? 'Bán' : 'Cho thuê';
-    const title = `${typeLabel} ${prop.area}m² – ${prop.address.split(',')[0]} – ${prop.bedrooms}PN/${prop.bathrooms}WC`;
-    const desc = `🏠 ${prop.type === 'Bán' ? 'Nhà cần bán' : 'Nhà cho thuê'} tại ${prop.address}.\n` +
-      `📐 Diện tích: ${prop.area}m²${prop.width ? ` (${prop.width}m x ${prop.length}m)` : ''}\n` +
-      `🛏 ${prop.bedrooms} phòng ngủ | 🚿 ${prop.bathrooms} WC\n` +
-      `🧭 Hướng: ${prop.direction} | 🛣 Đường trước: ${prop.road_width}\n` +
-      `📋 Pháp lý: ${prop.legal}\n` +
-      `💰 Giá: ${prop.price_display}`;
-    setForm({ title, description: desc, contact_phone: '', images: [] });
-    setStep('form');
-  };
-
-  const showToast = (msg, type = 'success') => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const handleSubmit = async () => {
-    if (!form.title.trim() || !form.description.trim() || !form.contact_phone.trim()) {
-      showToast('Vui lòng điền đầy đủ thông tin bắt buộc!', 'danger'); return;
-    }
-    setSubmitting(true);
-    const listing = {
-      property_id: selectedProp.id,
-      title: form.title,
-      description: form.description,
-      contact_phone: form.contact_phone,
-      images: form.images.length ? form.images : ['demo_img1.jpg', 'demo_img2.jpg'],
-      listing_status: 'Chờ duyệt',
-      createdBy: 'Đinh Việt Anh',
-      createdBy_id: 'u002',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      expiredAt: null,
-    };
-    await fetch(`${API}/listings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(listing) });
-    setSubmitting(false);
-    setStep('success');
-    showToast('✅ Gửi tin đăng thành công! Đang chờ MKT duyệt.');
-  };
-
-  const reset = () => { setStep('select'); setSelectedProp(null); setForm({ title: '', description: '', contact_phone: '', images: [] }); loadProperties(); };
-
+function MediaPreviewCarousel({ items, slide, setSlide }) {
+  const images = items.filter((x) => x.kind === 'image');
+  const videos = items.filter((x) => x.kind === 'video');
+  const main = images[slide] || images[0];
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f4ff', padding: '24px' }}>
-      {/* Header */}
-      <div className="d-flex align-items-center justify-content-between mb-4">
-        <div>
-          <h4 className="fw-bold mb-0" style={{ color: '#1a237e' }}>
-            <i className="bi bi-megaphone me-2 text-primary"></i>Feature 4 – Soạn Tin Đăng (UC004)
-          </h4>
-          <small className="text-muted">Thiết lập & Cấu hình Nội dung Niêm yết | Actor: Chuyên viên Đầu chủ</small>
-        </div>
-        <div className="d-flex gap-2">
-          <span className="badge bg-primary px-3 py-2">BR-001: Chỉ SP đã duyệt mới tạo được tin</span>
-        </div>
-      </div>
-
-      {toast && (
-        <div className={`alert alert-${toast.type} alert-dismissible d-flex align-items-center mb-3`} role="alert">
-          {toast.msg}
+    <div className="mb-4">
+      <div className="fw-semibold mb-2">Ảnh & video (xem trước)</div>
+      {images.length === 0 && videos.length === 0 && (
+        <div className="rounded-3 border bg-light p-4 text-center text-muted small">Chưa có ảnh/video. Thêm ở bước soạn tin.</div>
+      )}
+      {main && (
+        <div className="position-relative rounded-3 overflow-hidden border bg-dark" style={{ minHeight: 220 }}>
+          <img src={main.url} alt="" className="w-100 d-block" style={{ maxHeight: 360, objectFit: 'contain' }} />
+          {images.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="btn btn-light btn-sm position-absolute top-50 start-0 translate-middle-y ms-2"
+                onClick={() => setSlide((s) => (s - 1 + images.length) % images.length)}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="btn btn-light btn-sm position-absolute top-50 end-0 translate-middle-y me-2"
+                onClick={() => setSlide((s) => (s + 1) % images.length)}
+              >
+                ›
+              </button>
+              <div className="position-absolute bottom-0 start-0 w-100 py-2 px-2 text-white small text-center" style={{ background: 'linear-gradient(transparent,rgba(0,0,0,.75))' }}>
+                Ảnh {Math.min(slide + 1, images.length)} / {images.length}
+              </div>
+            </>
+          )}
         </div>
       )}
-
-      {/* ─── STEP 1: Chọn tài sản ─── */}
-      {step === 'select' && (
-        <>
-          {/* Stats */}
-          <div className="row g-3 mb-4">
-            {[
-              { label: 'Chờ tạo tin', count: eligible.length, color: '#0d6efd', icon: 'bi-house-check' },
-              { label: 'Đang niêm yết', count: properties.filter(p => p.level2_status === 'Đang niêm yết').length, color: '#198754', icon: 'bi-broadcast' },
-              { label: 'Chưa đủ điều kiện', count: ineligible.length, color: '#6c757d', icon: 'bi-ban' },
-              { label: 'Tổng tài sản', count: properties.length, color: '#6610f2', icon: 'bi-building' },
-            ].map((s, i) => (
-              <div key={i} className="col-md-3">
-                <div className="card border-0 shadow-sm h-100" style={{ borderLeft: `4px solid ${s.color}` }}>
-                  <div className="card-body d-flex align-items-center gap-3">
-                    <i className={`bi ${s.icon} fs-2`} style={{ color: s.color }}></i>
-                    <div><div className="fw-bold fs-4" style={{ color: s.color }}>{s.count}</div><div className="text-muted small">{s.label}</div></div>
-                  </div>
+      {images.length > 1 && (
+        <div className="d-flex gap-2 flex-wrap mt-2">
+          {images.map((im, i) => (
+            <button
+              key={im.clientKey}
+              type="button"
+              className={`p-0 border-2 rounded overflow-hidden bg-white ${i === slide ? 'border-primary' : 'border-transparent'}`}
+              style={{ width: 72, height: 54 }}
+              onClick={() => setSlide(i)}
+            >
+              <img src={im.url} alt="" className="w-100 h-100" style={{ objectFit: 'cover' }} />
+            </button>
+          ))}
+        </div>
+      )}
+      {videos.length > 0 && (
+        <div className="mt-3">
+          <div className="small fw-semibold text-muted mb-2">Video</div>
+          <div className="row g-2">
+            {videos.map((v) => (
+              <div key={v.clientKey} className="col-md-6">
+                <div className="border rounded-3 overflow-hidden bg-black">
+                  <video src={v.url} controls className="w-100" style={{ maxHeight: 240 }} playsInline />
+                  <div className="px-2 py-1 small text-white-50 text-truncate bg-dark">{v.fileName}</div>
                 </div>
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-          {/* Filter */}
-          <div className="card border-0 shadow-sm mb-4">
-            <div className="card-body d-flex gap-3 align-items-center flex-wrap">
-              <input className="form-control" style={{ maxWidth: 280 }} placeholder="🔍 Tìm mã LS- hoặc địa chỉ..." value={search} onChange={e => setSearch(e.target.value)} />
-              <div className="btn-group">
-                {['all', 'Bán', 'Thuê'].map(t => (
-                  <button key={t} className={`btn btn-sm ${filterType === t ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setFilterType(t)}>
-                    {t === 'all' ? 'Tất cả' : t}
-                  </button>
+function MediaEditorBlock({
+  localMedia,
+  setLocalMedia,
+  imageUrlInput,
+  setImageUrlInput,
+  videoUrlInput,
+  setVideoUrlInput,
+  showToast,
+  disabled,
+}) {
+  const fileInputRef = useRef(null);
+  const dragDepth = useRef(0);
+  const [isOver, setIsOver] = useState(false);
+
+  const ingestFiles = useCallback(
+    async (fileList) => {
+      const files = Array.from(fileList || []);
+      for (const file of files) {
+        if (file.type.startsWith('image/')) {
+          try {
+            const url = await readFileAsDataURL(file, MAX_IMAGE_BYTES);
+            setLocalMedia((prev) => [
+              ...prev,
+              {
+                clientKey: newClientKey(),
+                kind: 'image',
+                url,
+                fileName: file.name,
+                mimeType: file.type,
+                fileSize: file.size,
+                source: 'upload',
+              },
+            ]);
+          } catch (err) {
+            showToast(err.message || `Không tải được ảnh: ${file.name}`, 'danger');
+          }
+        } else if (file.type.startsWith('video/')) {
+          try {
+            const url = await readFileAsDataURL(file, MAX_VIDEO_BYTES);
+            setLocalMedia((prev) => [
+              ...prev,
+              {
+                clientKey: newClientKey(),
+                kind: 'video',
+                url,
+                fileName: file.name,
+                mimeType: file.type,
+                fileSize: file.size,
+                source: 'upload',
+              },
+            ]);
+          } catch (err) {
+            showToast(err.message || `Không tải được video: ${file.name}`, 'danger');
+          }
+        } else {
+          showToast(`Bỏ qua (chỉ nhận ảnh/video): ${file.name}`, 'warning');
+        }
+      }
+    },
+    [setLocalMedia, showToast],
+  );
+
+  const openFilePicker = () => {
+    if (!disabled) fileInputRef.current?.click();
+  };
+
+  const onFileInputChange = (e) => {
+    ingestFiles(e.target.files);
+    e.target.value = '';
+  };
+
+  const addImageUrls = () => {
+    const urls = splitUrls(imageUrlInput).filter(isHttpUrl);
+    if (!urls.length) {
+      showToast('Nhập ít nhất một URL ảnh hợp lệ (http/https).', 'danger');
+      return;
+    }
+    setLocalMedia((prev) => [
+      ...prev,
+      ...urls.map((url) => ({
+        clientKey: newClientKey(),
+        kind: 'image',
+        url,
+        fileName: url.split('/').pop() || 'image',
+        mimeType: 'image/url',
+        fileSize: null,
+        source: 'url',
+      })),
+    ]);
+    setImageUrlInput('');
+    showToast(`Đã thêm ${urls.length} ảnh từ URL.`, 'success');
+  };
+
+  const addVideoUrls = () => {
+    const urls = splitUrls(videoUrlInput).filter(isHttpUrl);
+    if (!urls.length) {
+      showToast('Nhập ít nhất một URL video hợp lệ (http/https).', 'danger');
+      return;
+    }
+    setLocalMedia((prev) => [
+      ...prev,
+      ...urls.map((url) => ({
+        clientKey: newClientKey(),
+        kind: 'video',
+        url,
+        fileName: url.split('/').pop() || 'video',
+        mimeType: 'video/url',
+        fileSize: null,
+        source: 'url',
+      })),
+    ]);
+    setVideoUrlInput('');
+    showToast(`Đã thêm ${urls.length} video từ URL.`, 'success');
+  };
+
+  const remove = async (item) => {
+    if (item.mediaLibId) {
+      try {
+        await fetch(`${API}/mediaLibrary/${item.mediaLibId}`, { method: 'DELETE' });
+      } catch {
+        /* ignore */
+      }
+    }
+    setLocalMedia((prev) => prev.filter((x) => x.clientKey !== item.clientKey));
+  };
+
+  return (
+    <div className="mb-4 p-3 rounded-3 border bg-white">
+      <div className="fw-semibold mb-2">
+        <i className="bi bi-images me-2 text-primary" />
+        Ảnh & video → Library Media
+      </div>
+      <p className="small text-muted mb-3">
+        Kéo thả hoặc đính kèm file. Ảnh tối đa ~{Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB; video ~{Math.round(MAX_VIDEO_BYTES / 1024 / 1024)}MB (demo lưu qua
+        Library). File lớn hơn dùng URL bên dưới.
+      </p>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="d-none"
+        accept="image/*,video/*"
+        multiple
+        disabled={disabled}
+        onChange={onFileInputChange}
+      />
+
+      <div
+        className={`rounded-3 border border-2 border-dashed p-4 text-center mb-3 position-relative ${disabled ? 'opacity-50' : 'cursor-pointer'} ${
+          isOver ? 'border-primary bg-primary bg-opacity-10' : 'border-secondary'
+        }`}
+        style={{ minHeight: 160 }}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (disabled) return;
+          dragDepth.current += 1;
+          setIsOver(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (disabled) return;
+          dragDepth.current -= 1;
+          if (dragDepth.current <= 0) {
+            dragDepth.current = 0;
+            setIsOver(false);
+          }
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (disabled) return;
+          dragDepth.current = 0;
+          setIsOver(false);
+          ingestFiles(e.dataTransfer.files);
+        }}
+        onClick={() => openFilePicker()}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openFilePicker();
+          }
+        }}
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        aria-label="Kéo thả hoặc bấm để chọn ảnh và video"
+      >
+        <i className="bi bi-cloud-arrow-up display-4 text-primary d-block mb-2" />
+        <div className="fw-semibold text-dark">Kéo thả ảnh hoặc video vào đây</div>
+        <div className="small text-muted mb-3">hoặc bấm vùng này để chọn file từ máy</div>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm px-4"
+          disabled={disabled}
+          onClick={(e) => {
+            e.stopPropagation();
+            openFilePicker();
+          }}
+        >
+          <i className="bi bi-paperclip me-1" />
+          Đính kèm
+        </button>
+      </div>
+
+      {localMedia.length > 0 && (
+        <div className="mb-3">
+          <div className="small fw-semibold text-muted mb-2">Đã chọn ({localMedia.length}) — bấm × để gỡ</div>
+          <div className="d-flex flex-wrap gap-2">
+            {localMedia.map((m) => (
+              <div key={m.clientKey} className="position-relative border rounded overflow-hidden bg-light" style={{ width: 100, height: 76 }}>
+                {m.kind === 'image' ? (
+                  <img src={m.url} alt="" className="w-100 h-100" style={{ objectFit: 'cover' }} />
+                ) : (
+                  <div className="w-100 h-100 d-flex align-items-center justify-content-center small bg-dark text-white">
+                    <i className="bi bi-film fs-4" />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm position-absolute top-0 end-0 m-1 py-0 px-1"
+                  style={{ fontSize: 11 }}
+                  disabled={disabled}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    remove(m);
+                  }}
+                  title="Gỡ khỏi tin"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <details className="small">
+        <summary className="fw-semibold text-primary" style={{ cursor: 'pointer' }}>
+          Thêm từ URL (tuỳ chọn)
+        </summary>
+        <div className="row g-2 mt-2 pt-2 border-top">
+          <div className="col-md-6">
+            <label className="form-label small">URL ảnh (mỗi dòng / phẩy)</label>
+            <textarea
+              className="form-control form-control-sm"
+              rows={2}
+              disabled={disabled}
+              placeholder="https://…/a.jpg"
+              value={imageUrlInput}
+              onChange={(e) => setImageUrlInput(e.target.value)}
+            />
+            <button type="button" className="btn btn-sm btn-outline-primary mt-1" disabled={disabled} onClick={addImageUrls}>
+              Thêm ảnh URL
+            </button>
+          </div>
+          <div className="col-md-6">
+            <label className="form-label small">URL video</label>
+            <textarea
+              className="form-control form-control-sm"
+              rows={2}
+              disabled={disabled}
+              placeholder="https://…/clip.mp4"
+              value={videoUrlInput}
+              onChange={(e) => setVideoUrlInput(e.target.value)}
+            />
+            <button type="button" className="btn btn-sm btn-outline-primary mt-1" disabled={disabled} onClick={addVideoUrls}>
+              Thêm video URL
+            </button>
+          </div>
+        </div>
+      </details>
+    </div>
+  );
+}
+
+export default function Feature4_CreateListing() {
+  const [user, setUser] = useState(() => readSessionUser());
+  const [properties, setProperties] = useState([]);
+  const [listings, setListings] = useState([]);
+  const [mediaLibraryAll, setMediaLibraryAll] = useState([]);
+  const [workspaceTab, setWorkspaceTab] = useState('compose'); // compose | mine | library
+  const [filterType, setFilterType] = useState('all');
+  const [filterCreator, setFilterCreator] = useState('all');
+  const [filterTab, setFilterTab] = useState('eligible');
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(null);
+  const [form, setForm] = useState({ title: '', description: '', contact_phone: '' });
+  const [localMedia, setLocalMedia] = useState([]);
+  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [videoUrlInput, setVideoUrlInput] = useState('');
+  const [previewSlide, setPreviewSlide] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [step, setStep] = useState('select');
+  const [resubmitTarget, setResubmitTarget] = useState(null);
+  const [resubmitNote, setResubmitNote] = useState('');
+  const [showResubmitWebsitePreview, setShowResubmitWebsitePreview] = useState(false);
+  const [createdListingId, setCreatedListingId] = useState('');
+
+  useEffect(() => {
+    const onStorage = () => setUser(readSessionUser());
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  const loadData = useCallback(async () => {
+    const [p, l] = await Promise.all([
+      fetch(`${API}/properties`).then((r) => r.json()),
+      fetch(`${API}/listings`).then((r) => r.json()),
+    ]);
+    setProperties(p);
+    setListings(l);
+  }, []);
+
+  const loadMediaLibrary = useCallback(async () => {
+    const rows = await fetch(`${API}/mediaLibrary`).then((r) => r.json());
+    setMediaLibraryAll(Array.isArray(rows) ? rows : []);
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (workspaceTab === 'library') loadMediaLibrary();
+  }, [workspaceTab, loadMediaLibrary]);
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const posProps = useMemo(
+    () => properties.filter((p) => posScopedProperty(p, user)),
+    [properties, user],
+  );
+
+  const creators = useMemo(() => [...new Set(posProps.map((p) => p.createdBy).filter(Boolean))], [posProps]);
+
+  const eligible = useMemo(
+    () =>
+      posProps.filter((p) => {
+        const s1 = p.level1_status || p.statusLv1;
+        const s2 = p.level2_status || p.statusLv2;
+        return (
+          (s1 === 'Được duyệt' || s1 === 'Được đảm bảo') &&
+          s2 === 'Chưa niêm yết' &&
+          (filterType === 'all' || p.type === filterType) &&
+          (filterCreator === 'all' || p.createdBy === filterCreator) &&
+          (search === '' ||
+            p.address?.toLowerCase().includes(search.toLowerCase()) ||
+            String(p.id).toLowerCase().includes(search.toLowerCase()))
+        );
+      }),
+    [posProps, filterType, filterCreator, search],
+  );
+
+  const allProps = useMemo(
+    () =>
+      posProps.filter((p) => {
+        return (
+          (filterType === 'all' || p.type === filterType) &&
+          (filterCreator === 'all' || p.createdBy === filterCreator) &&
+          (search === '' ||
+            p.address?.toLowerCase().includes(search.toLowerCase()) ||
+            String(p.id).toLowerCase().includes(search.toLowerCase()))
+        );
+      }),
+    [posProps, filterType, filterCreator, search],
+  );
+
+  const displayList = filterTab === 'eligible' ? eligible : allProps;
+
+  const myListings = useMemo(() => {
+    return listings.filter((l) => {
+      if (user.role === 'admin') return true;
+      if (l.createdBy_id && user.id) return l.createdBy_id === user.id;
+      return l.createdBy === user.name;
+    });
+  }, [listings, user]);
+
+  const scopedMediaLibrary = useMemo(() => {
+    if (user.role === 'admin') return mediaLibraryAll;
+    const myLt = new Set(myListings.map((l) => l.id));
+    return mediaLibraryAll.filter((m) => myLt.has(m.listingId));
+  }, [mediaLibraryAll, myListings, user.role]);
+
+  const pendingMktCount = useMemo(
+    () => listings.filter((l) => l.listing_status === 'Chờ duyệt' || l.listing_status === 'Chờ duyệt chỉnh sửa').length,
+    [listings],
+  );
+
+  const resubmitPreviewImageUrls = useMemo(
+    () => localMedia.filter((m) => m.kind === 'image').map((m) => m.url).filter(Boolean),
+    [localMedia],
+  );
+
+  const autoFill = (prop) => {
+    setForm({
+      title: buildListingTitleFromProperty(prop),
+      description: buildListingDescriptionFromProperty(prop),
+      contact_phone: '',
+    });
+    setLocalMedia([]);
+    setImageUrlInput('');
+    setVideoUrlInput('');
+    setPreviewSlide(0);
+    setSelected(prop);
+    setStep('form');
+  };
+
+  const nextLTId = async () => {
+    const list = await fetch(`${API}/listings`).then((r) => r.json());
+    let max = 0;
+    for (const l of list) {
+      const n = listingSequenceNumber(l.id);
+      if (n != null) max = Math.max(max, n);
+    }
+    return formatListingId(String(max + 1));
+  };
+
+  const syncListingMediaFields = async (listingId, propertyId, u, mediaRows) => {
+    const items = mediaRows.map((m) => ({
+      kind: m.kind,
+      url: m.url,
+      fileName: m.fileName,
+      mimeType: m.mimeType,
+      fileSize: m.fileSize,
+      source: m.source || 'upload',
+    }));
+    const saved = await persistMediaItems({
+      listingId,
+      propertyId,
+      user: u,
+      items,
+    });
+    const imageUrls = saved.filter((s) => s.kind === 'image').map((s) => s.url);
+    const videoUrls = saved.filter((s) => s.kind === 'video').map((s) => s.url);
+    const mediaLibraryIds = saved.map((s) => s.id).filter(Boolean);
+    await fetch(`${API}/listings/${listingId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        images: imageUrls,
+        videos: videoUrls,
+        mediaLibraryIds,
+        updatedAt: new Date().toISOString(),
+      }),
+    });
+  };
+
+  const handleSubmitNew = async () => {
+    if (!form.title.trim() || !form.description.trim() || !form.contact_phone.trim()) {
+      showToast('Vui lòng điền đầy đủ tiêu đề, mô tả và SĐT liên hệ.', 'danger');
+      return;
+    }
+    const u = readSessionUser();
+    setSubmitting(true);
+    try {
+      const rawId = await nextLTId();
+      const newLTId = formatListingId(rawId);
+      const now = new Date().toISOString();
+      await fetch(`${API}/listings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: newLTId,
+          property_id: selected.id,
+          title: form.title.trim(),
+          description: form.description.trim(),
+          contact_phone: form.contact_phone.trim(),
+          images: [],
+          videos: [],
+          mediaLibraryIds: [],
+          listing_status: 'Chờ duyệt',
+          createdBy: u.name || 'Sales',
+          createdBy_id: u.id || '',
+          createdAt: now,
+          updatedAt: now,
+          expiredAt: null,
+        }),
+      });
+      if (localMedia.length) {
+        await syncListingMediaFields(newLTId, selected.id, u, localMedia);
+      }
+      await postAuditLog({
+        actionText: buildLogAction('Tạo & gửi duyệt bài đăng', newLTId, `TS ${selected.id}`),
+        listingId: newLTId,
+        userName: u.name || u.email || 'User',
+        userId: u.id || '',
+        propertyId: selected.id,
+        oldStatus: '—',
+        newStatus: 'Chờ duyệt',
+        detail: `Tiêu đề: ${form.title.slice(0, 80)}${form.title.length > 80 ? '…' : ''} · Media: ${localMedia.length}`,
+      });
+      setCreatedListingId(newLTId);
+      setSubmitting(false);
+      setStep('success');
+      loadData();
+      if (workspaceTab === 'library') loadMediaLibrary();
+    } catch {
+      setSubmitting(false);
+      showToast('Lỗi khi gửi bài đăng.', 'danger');
+    }
+  };
+
+  const openResubmit = async (listing) => {
+    const prop = properties.find((p) => p.id === listing.property_id);
+    setResubmitTarget({ listing, property: prop });
+    setForm({
+      title: buildListingTitleFromProperty(prop) || listing.title || '',
+      description: buildListingDescriptionFromProperty(prop),
+      contact_phone: (listing.contact_phone || '').trim(),
+    });
+    setResubmitNote('');
+    setShowResubmitWebsitePreview(false);
+    setImageUrlInput('');
+    setVideoUrlInput('');
+    setPreviewSlide(0);
+    const rows = await fetchMediaByListing(listing.id);
+    let media = rows.map((r) => ({
+      clientKey: r.id,
+      mediaLibId: r.id,
+      kind: r.kind === 'video' ? 'video' : 'image',
+      url: r.url,
+      fileName: r.fileName || '',
+      mimeType: r.mimeType,
+      fileSize: r.fileSize,
+      source: r.source || 'upload',
+    }));
+    if (media.length === 0) {
+      const urls = mergePreviewImageUrls(listing, prop, 5);
+      media = urls.map((url, i) => ({
+        clientKey: `resubmit-seed-${i}`,
+        kind: 'image',
+        url,
+        fileName: `anh-thuc-te-${i + 1}.jpg`,
+        mimeType: 'image/jpeg',
+        fileSize: null,
+        source: 'url',
+      }));
+    }
+    setLocalMedia(media);
+  };
+
+  const handleResubmit = async () => {
+    if (!resubmitTarget) return;
+    if (resubmitNote.trim().length < RESUBMIT_NOTE_MIN) {
+      showToast(`Ghi chú gửi lại bắt buộc tối thiểu ${RESUBMIT_NOTE_MIN} ký tự (mô tả phần đã chỉnh theo phản hồi MKT).`, 'danger');
+      return;
+    }
+    if (!form.title.trim() || !form.description.trim() || !form.contact_phone.trim()) {
+      showToast('Tiêu đề, mô tả và SĐT không được để trống.', 'danger');
+      return;
+    }
+    const u = readSessionUser();
+    const { listing } = resubmitTarget;
+    const now = new Date().toISOString();
+    setSubmitting(true);
+    try {
+      const existing = await fetchMediaByListing(listing.id);
+      await deleteMediaRows(existing);
+      const saved = await persistMediaItems({
+        listingId: listing.id,
+        propertyId: listing.property_id,
+        user: u,
+        items: localMedia.map((m) => ({
+          kind: m.kind,
+          url: m.url,
+          fileName: m.fileName,
+          mimeType: m.mimeType,
+          fileSize: m.fileSize,
+          source: m.source || 'upload',
+        })),
+      });
+      const imageUrls = saved.filter((s) => s.kind === 'image').map((s) => s.url);
+      const videoUrls = saved.filter((s) => s.kind === 'video').map((s) => s.url);
+      const mediaLibraryIds = saved.map((s) => s.id).filter(Boolean);
+
+      await fetch(`${API}/listings/${listing.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: form.title.trim(),
+          description: form.description.trim(),
+          contact_phone: form.contact_phone.trim(),
+          listing_status: 'Chờ duyệt chỉnh sửa',
+          prev_rejection_note: listing.rejection_note || listing.prev_rejection_note || null,
+          resubmit_note: resubmitNote.trim(),
+          resubmittedAt: now,
+          resubmittedBy: u.name,
+          resubmittedBy_id: u.id,
+          rejection_note: null,
+          rejectedBy: null,
+          rejectedBy_id: null,
+          rejectedAt: null,
+          images: imageUrls,
+          videos: videoUrls,
+          mediaLibraryIds,
+          updatedAt: now,
+        }),
+      });
+      const propPatch = resubmitTarget.property;
+      if (propPatch?.id) {
+        await fetch(`${API}/properties/${encodeURIComponent(propPatch.id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            level2_status: 'Chờ duyệt chỉnh sửa',
+            statusLv2: 'Chờ duyệt chỉnh sửa',
+            updatedAt: now,
+          }),
+        });
+      }
+      await postAuditLog({
+        actionText: buildLogAction('Đầu chủ chỉnh sửa & gửi lại duyệt', listing.id, `Ghi chú: ${resubmitNote.trim().slice(0, 120)}`),
+        listingId: listing.id,
+        userName: u.name || u.email || 'User',
+        userId: u.id || '',
+        propertyId: listing.property_id,
+        oldStatus: 'Từ chối',
+        newStatus: 'Chờ duyệt chỉnh sửa',
+        detail: resubmitNote.trim(),
+      });
+      setResubmitTarget(null);
+      setResubmitNote('');
+      setLocalMedia([]);
+      setSubmitting(false);
+      showToast('Đã gửi lại MKT duyệt.', 'success');
+      loadData();
+      loadMediaLibrary();
+    } catch {
+      setSubmitting(false);
+      showToast('Lỗi khi gửi lại.', 'danger');
+    }
+  };
+
+  const resetCompose = () => {
+    setStep('select');
+    setSelected(null);
+    setForm({ title: '', description: '', contact_phone: '' });
+    setLocalMedia([]);
+    setImageUrlInput('');
+    setVideoUrlInput('');
+    setPreviewSlide(0);
+    setCreatedListingId('');
+    loadData();
+  };
+
+  useEffect(() => {
+    setPreviewSlide(0);
+  }, [step]);
+
+  useEffect(() => {
+    const n = localMedia.filter((x) => x.kind === 'image').length;
+    setPreviewSlide((s) => (n === 0 ? 0 : Math.min(s, n - 1)));
+  }, [localMedia]);
+
+  return (
+    <div className="p-0" style={{ minHeight: '100vh', background: 'linear-gradient(160deg, #0f172a 0%, #1e293b 45%, #334155 100%)' }}>
+      <div className="p-4 mx-auto" style={{ maxWidth: 1280 }}>
+        <header className="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+          <div>
+            <div className="text-uppercase small fw-bold mb-1" style={{ letterSpacing: '0.12em', color: '#94a3b8' }}>
+              UC004 · Niêm yết Lv2
+            </div>
+            <h3 className="fw-bold text-white mb-1">Soạn tin đăng</h3>
+            <p className="text-secondary mb-0 small" style={{ maxWidth: 560 }}>
+              Media lưu tại <strong>Library</strong> (json-server). Mã tin chuẩn <strong>LT-00001</strong>. Xem trước có gallery ảnh + video.
+            </p>
+          </div>
+          <div className="d-flex gap-2 flex-wrap">
+            <span className="badge rounded-pill px-3 py-2" style={{ background: '#334155', color: '#e2e8f0' }}>
+              {user.name || 'Chưa đăng nhập'}
+            </span>
+            <span className="badge rounded-pill px-3 py-2 bg-info bg-opacity-25 text-info border border-info border-opacity-50">
+              Chờ MKT: {pendingMktCount}
+            </span>
+          </div>
+        </header>
+
+        {toast && (
+          <div className={`alert alert-${toast.type} border-0 shadow mb-3`} role="alert">
+            {toast.msg}
+          </div>
+        )}
+
+        <div className="btn-group mb-4 shadow-sm flex-wrap">
+          <button
+            type="button"
+            className={`btn px-3 ${workspaceTab === 'compose' ? 'btn-light fw-bold' : 'btn-outline-light'}`}
+            onClick={() => setWorkspaceTab('compose')}
+          >
+            Soạn tin mới
+          </button>
+          <button
+            type="button"
+            className={`btn px-3 ${workspaceTab === 'mine' ? 'btn-light fw-bold' : 'btn-outline-light'}`}
+            onClick={() => setWorkspaceTab('mine')}
+          >
+            Bài đăng của tôi ({myListings.length})
+          </button>
+          <button
+            type="button"
+            className={`btn px-3 ${workspaceTab === 'library' ? 'btn-light fw-bold' : 'btn-outline-light'}`}
+            onClick={() => setWorkspaceTab('library')}
+          >
+            Library Media ({scopedMediaLibrary.length})
+          </button>
+        </div>
+
+        {workspaceTab === 'library' && (
+          <div className="card border-0 shadow-lg mb-4" style={{ background: '#f8fafc', borderRadius: 16 }}>
+            <div className="card-header border-0 fw-semibold py-3" style={{ background: '#e2e8f0' }}>
+              Thư viện Media (ảnh / video theo tin đăng)
+            </div>
+            <div className="card-body">
+              {scopedMediaLibrary.length === 0 && <p className="text-muted small mb-0">Chưa có file trong thư viện.</p>}
+              <div className="row g-3">
+                {scopedMediaLibrary.map((m) => (
+                  <div key={m.id} className="col-6 col-md-4 col-lg-3">
+                    <div className="border rounded overflow-hidden bg-white shadow-sm">
+                      {m.kind === 'video' ? (
+                        <video src={m.url} className="w-100" style={{ height: 120, objectFit: 'cover' }} muted playsInline />
+                      ) : (
+                        <img src={m.url} alt="" className="w-100" style={{ height: 120, objectFit: 'cover' }} />
+                      )}
+                      <div className="p-2 small">
+                        <div className="text-truncate fw-semibold" title={m.fileName}>
+                          {m.fileName}
+                        </div>
+                        <div className="text-muted text-truncate">Tin: {formatListingId(m.listingId)}</div>
+                        <span className="badge bg-secondary mt-1">{m.kind}</span>
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
-              <span className="ms-auto text-muted small">{eligible.length} tài sản sẵn sàng tạo tin</span>
             </div>
           </div>
+        )}
 
-          {/* Eligible Properties */}
-          <h6 className="fw-bold text-success mb-3"><i className="bi bi-check-circle me-1"></i>Tài sản đủ điều kiện tạo tin ({eligible.length})</h6>
-          {eligible.length === 0 && (
-            <div className="card border-dashed text-center py-5 mb-4">
-              <i className="bi bi-inbox fs-1 text-muted"></i>
-              <p className="text-muted mt-2">Không có tài sản nào sẵn sàng.</p>
+        {workspaceTab === 'mine' && (
+          <div className="card border-0 shadow-lg mb-4" style={{ background: '#f8fafc', borderRadius: 16 }}>
+            <div className="card-body p-0">
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0">
+                  <thead style={{ background: '#e2e8f0' }}>
+                    <tr className="small text-muted text-uppercase">
+                      <th className="ps-4">Mã tin</th>
+                      <th>Tài sản</th>
+                      <th>Tiêu đề</th>
+                      <th>Trạng thái</th>
+                      <th className="text-end pe-4">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myListings.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="text-center py-5 text-muted">
+                          Chưa có bài đăng nào.
+                        </td>
+                      </tr>
+                    )}
+                    {myListings.map((l) => (
+                      <tr key={l.id}>
+                        <td className="ps-4 fw-mono">
+                          <span className="badge bg-dark">{formatListingId(l.id)}</span>
+                        </td>
+                        <td className="small">{l.property_id}</td>
+                        <td className="text-truncate" style={{ maxWidth: 280 }} title={l.title}>
+                          {l.title}
+                        </td>
+                        <td>
+                          <span className="badge bg-secondary">{l.listing_status}</span>
+                        </td>
+                        <td className="text-end pe-4">
+                          {l.listing_status === 'Từ chối' && (user.role === 'admin' || l.createdBy_id === user.id || l.createdBy === user.name) && (
+                            <button type="button" className="btn btn-sm btn-primary" onClick={() => openResubmit(l)}>
+                              Gửi lại sau từ chối
+                            </button>
+                          )}
+                          <a href="/feature5" className="btn btn-sm btn-outline-secondary ms-1">
+                            Xem F5
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          )}
-          <div className="row g-3 mb-4">
-            {eligible.map(p => {
-              const wb = WAREHOUSE_BADGE[p.warehouse_type] || {};
-              return (
-                <div key={p.id} className="col-md-6 col-xl-4">
-                  <div className="card border-0 shadow-sm h-100 position-relative" style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
-                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
-                    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
-                    {/* Warehouse badge */}
-                    <div className="position-absolute top-0 end-0 m-2">
-                      <span className="badge" style={{ background: wb.bg }}>{wb.icon} {p.warehouse_type}</span>
+          </div>
+        )}
+
+        {workspaceTab === 'compose' && (
+          <>
+            <div className="row g-3 mb-4">
+              {[
+                { label: 'Sẵn sàng soạn tin', value: eligible.length, color: '#38bdf8' },
+                {
+                  label: 'Đang niêm yết (POS)',
+                  value: posProps.filter((p) => (p.level2_status || p.statusLv2) === 'Đang niêm yết').length,
+                  color: '#4ade80',
+                },
+                { label: 'Chờ duyệt MKT', value: pendingMktCount, color: '#fbbf24' },
+                { label: 'Tài sản POS', value: posProps.length, color: '#c084fc' },
+              ].map((s) => (
+                <div key={s.label} className="col-6 col-md-3">
+                  <div
+                    className="p-3 border-0 h-100"
+                    style={{ borderRadius: 14, background: 'rgba(15,23,42,0.65)', border: `1px solid ${s.color}44` }}
+                  >
+                    <div className="fw-bold fs-4" style={{ color: s.color }}>
+                      {s.value}
                     </div>
-                    <div className="card-body">
-                      <div className="d-flex align-items-start gap-2 mb-2">
-                        <span className="badge bg-dark">{p.id}</span>
-                        <span className={`badge bg-${p.type === 'Bán' ? 'danger' : 'info'}`}>{p.type}</span>
-                        <span className={`badge bg-${STATUS_COLOR[p.level1_status]}`}>{p.level1_status}</span>
+                    <div className="small" style={{ color: '#94a3b8' }}>
+                      {s.label}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="card border-0 shadow-lg mb-4" style={{ background: '#f8fafc', borderRadius: 16 }}>
+              <div className="card-body py-3 d-flex flex-wrap gap-2 align-items-center">
+                <div className="btn-group btn-group-sm">
+                  <button
+                    type="button"
+                    className={`btn ${filterTab === 'eligible' ? 'btn-primary' : 'btn-outline-primary'}`}
+                    onClick={() => setFilterTab('eligible')}
+                  >
+                    Đủ điều kiện ({eligible.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${filterTab === 'all' ? 'btn-secondary' : 'btn-outline-secondary'}`}
+                    onClick={() => setFilterTab('all')}
+                  >
+                    Tất cả TS
+                  </button>
+                </div>
+                <input
+                  className="form-control form-control-sm"
+                  style={{ maxWidth: 220 }}
+                  placeholder="Tìm mã LS / địa chỉ…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <div className="btn-group btn-group-sm">
+                  {['all', 'Bán', 'Thuê'].map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className={`btn ${filterType === t ? 'btn-info' : 'btn-outline-info'}`}
+                      onClick={() => setFilterType(t)}
+                    >
+                      {t === 'all' ? 'Tất cả' : t}
+                    </button>
+                  ))}
+                </div>
+                <select
+                  className="form-select form-select-sm"
+                  style={{ maxWidth: 200 }}
+                  value={filterCreator}
+                  onChange={(e) => setFilterCreator(e.target.value)}
+                >
+                  <option value="all">Mọi người tạo TS</option>
+                  {creators.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="card border-0 shadow-lg" style={{ background: '#f8fafc', borderRadius: 16 }}>
+              <div className="card-header border-0 py-3 fw-semibold d-flex align-items-center" style={{ background: '#e2e8f0', borderRadius: '16px 16px 0 0' }}>
+                <span>Danh sách tài sản · {displayList.length}</span>
+                <span className="ms-auto small text-muted fw-normal">Chọn dòng để soạn tin</span>
+              </div>
+              <div className="card-body p-0" style={{ maxHeight: '58vh', overflowY: 'auto' }}>
+                <div className="table-responsive">
+                  <table className="table table-hover align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
+                    <thead className="table-light sticky-top">
+                      <tr className="small text-muted">
+                        <th className="ps-3">Mã LS</th>
+                        <th>Loại BĐS</th>
+                        <th>Địa chỉ</th>
+                        <th>Loại</th>
+                        <th>Giá</th>
+                        <th>Kho</th>
+                        <th>Lv1</th>
+                        <th>Lv2</th>
+                        <th>POS</th>
+                        <th>Người tạo TS</th>
+                        <th className="text-end pe-3">Hành động</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayList.length === 0 && (
+                        <tr>
+                          <td colSpan={11} className="text-center py-5 text-muted">
+                            Không có tài sản.
+                          </td>
+                        </tr>
+                      )}
+                      {displayList.map((p) => {
+                        const s1 = p.level1_status || p.statusLv1;
+                        const s2 = p.level2_status || p.statusLv2;
+                        const canCreate = (s1 === 'Được duyệt' || s1 === 'Được đảm bảo') && s2 === 'Chưa niêm yết';
+                        return (
+                          <tr
+                            key={p.id}
+                            style={{ cursor: canCreate ? 'pointer' : 'default', opacity: canCreate ? 1 : 0.55 }}
+                            onClick={() => canCreate && autoFill(p)}
+                          >
+                            <td className="ps-3">
+                              <span className="badge bg-dark">{p.id}</span>
+                            </td>
+                            <td className="small">{p.propertyType}</td>
+                            <td className="text-truncate" style={{ maxWidth: 200 }} title={p.address}>
+                              {p.address}
+                            </td>
+                            <td>
+                              <span className={`badge bg-${p.type === 'Bán' ? 'danger' : 'info'}`}>{p.type}</span>
+                            </td>
+                            <td className="small fw-semibold text-primary">
+                              {p.price_display || `${Number(p.price).toLocaleString('en-US')} ${p.priceUnit || 'VNĐ'}`}
+                            </td>
+                            <td>
+                              <span className="badge bg-light text-dark border">{p.warehouse_type || '—'}</span>
+                            </td>
+                            <td>
+                              <span className={`badge bg-${LV1_COLOR[s1] || 'secondary'}`}>{s1}</span>
+                            </td>
+                            <td>
+                              <span className={`badge bg-${LV2_COLOR[s2] || 'secondary'}`}>{s2}</span>
+                            </td>
+                            <td className="small text-muted">{p.pos_name}</td>
+                            <td className="small">{p.createdBy}</td>
+                            <td className="text-end pe-3">
+                              {canCreate ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-primary"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    autoFill(p);
+                                  }}
+                                >
+                                  Soạn tin
+                                </button>
+                              ) : (
+                                <span className="badge bg-light text-muted border">Không đủ ĐK</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {selected && step === 'form' && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 1050 }}>
+          <div className="modal-dialog modal-xl modal-dialog-scrollable">
+            <div className="modal-content border-0" style={{ borderRadius: 16 }}>
+              <div className="modal-header border-0 text-white" style={{ background: 'linear-gradient(90deg,#0ea5e9,#6366f1)' }}>
+                <h5 className="modal-title fw-bold">Soạn tin đăng — {selected.id}</h5>
+                <button type="button" className="btn-close btn-close-white" onClick={resetCompose} aria-label="Đóng" />
+              </div>
+              <div className="modal-body p-0">
+                <div className="bg-light p-3 border-bottom d-flex flex-wrap gap-2 align-items-center">
+                  <span className="badge bg-dark">{selected.id}</span>
+                  <span className={`badge bg-${selected.type === 'Bán' ? 'danger' : 'info'}`}>{selected.type}</span>
+                  <span className="small text-truncate" style={{ maxWidth: 400 }}>
+                    {selected.address}
+                  </span>
+                </div>
+                <div className="container-fluid py-4">
+                  <div className="row g-4">
+                    <div className="col-md-4">
+                      <div className="card border-0 bg-light h-100">
+                        <div className="card-header fw-semibold border-0 bg-white">Thông tin tài sản</div>
+                        <div className="card-body small">
+                          {[
+                            ['Loại hình', selected.type],
+                            ['Loại BĐS', selected.propertyType],
+                            [
+                              'Giá',
+                              selected.price_display ||
+                                `${Number(selected.price).toLocaleString('en-US')} ${selected.priceUnit || 'VNĐ'}`,
+                            ],
+                            ['Diện tích', `${Number(selected.area).toLocaleString('en-US')}m²`],
+                            ['Người tạo TS', selected.createdBy],
+                          ].map(([k, v]) => (
+                            <div key={k} className="d-flex justify-content-between mb-2 border-bottom pb-1">
+                              <span className="text-muted">{k}</span>
+                              <span className="fw-semibold text-end" style={{ maxWidth: '58%' }}>
+                                {v}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <p className="fw-semibold mb-1" style={{ fontSize: 13 }}>{p.address}</p>
-                      <div className="d-flex gap-3 text-muted small mb-2">
-                        <span><i className="bi bi-arrows-angle-expand me-1"></i>{p.area}m²</span>
-                        <span><i className="bi bi-door-open me-1"></i>{p.bedrooms}PN/{p.bathrooms}WC</span>
-                        <span><i className="bi bi-compass me-1"></i>{p.direction}</span>
+                    </div>
+                    <div className="col-md-8">
+                      <MediaEditorBlock
+                        localMedia={localMedia}
+                        setLocalMedia={setLocalMedia}
+                        imageUrlInput={imageUrlInput}
+                        setImageUrlInput={setImageUrlInput}
+                        videoUrlInput={videoUrlInput}
+                        setVideoUrlInput={setVideoUrlInput}
+                        showToast={showToast}
+                        disabled={false}
+                      />
+                      <div className="mb-3">
+                        <label className="form-label fw-semibold">Tiêu đề</label>
+                        <input
+                          className="form-control"
+                          value={form.title}
+                          onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                          maxLength={150}
+                        />
+                        <div className="form-text text-end">{form.title.length}/150</div>
                       </div>
-                      <div className="fw-bold text-primary mb-3">{p.price_display}</div>
-                      <div className="text-muted small mb-3">
-                        <i className="bi bi-person me-1"></i>{p.createdBy} &nbsp;|&nbsp; <i className="bi bi-building me-1"></i>{p.pos_name}
+                      <div className="mb-3">
+                        <label className="form-label fw-semibold">Mô tả</label>
+                        <textarea
+                          className="form-control"
+                          rows={8}
+                          value={form.description}
+                          onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                          maxLength={2000}
+                        />
+                        <div className="form-text text-end">{form.description.length}/2000</div>
                       </div>
-                      <button className="btn btn-primary btn-sm w-100" onClick={() => autoFill(p)}>
-                        <i className="bi bi-magic me-1"></i>Auto-fill & Tạo tin đăng
+                      <div className="mb-3">
+                        <label className="form-label fw-semibold">SĐT liên hệ</label>
+                        <input
+                          className="form-control"
+                          value={form.contact_phone}
+                          onChange={(e) => setForm((f) => ({ ...f, contact_phone: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer bg-light border-0">
+                <button type="button" className="btn btn-outline-secondary" onClick={resetCompose}>
+                  Hủy
+                </button>
+                <button type="button" className="btn btn-outline-primary" onClick={() => setStep('preview')}>
+                  Xem trước
+                </button>
+                <button type="button" className="btn btn-primary fw-bold" disabled={submitting} onClick={handleSubmitNew}>
+                  {submitting && <span className="spinner-border spinner-border-sm me-1" />}
+                  Gửi duyệt MKT
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selected && step === 'preview' && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 1050 }}>
+          <div className="modal-dialog modal-xl modal-dialog-scrollable">
+            <div className="modal-content border-0" style={{ borderRadius: 16 }}>
+              <div className="modal-header bg-info text-white border-0">
+                <h5 className="modal-title fw-bold">Xem trước tin đăng</h5>
+                <button type="button" className="btn-close btn-close-white" onClick={() => setStep('form')} aria-label="Đóng" />
+              </div>
+              <div className="modal-body">
+                <p className="small text-muted mb-3">
+                  Sau khi gửi, mã tin được chuẩn hóa dạng <strong>LT-#####</strong> (5 chữ số). Ảnh/video dưới đây là nội dung sẽ lưu vào Library.
+                </p>
+                <MediaPreviewCarousel items={localMedia} slide={previewSlide} setSlide={setPreviewSlide} />
+                <h5 className="fw-bold">{form.title}</h5>
+                <pre className="bg-light border rounded p-3 small" style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
+                  {form.description}
+                </pre>
+                <div className="alert alert-light border">SĐT: {form.contact_phone}</div>
+              </div>
+              <div className="modal-footer border-0 bg-light">
+                <button type="button" className="btn btn-outline-secondary" onClick={() => setStep('form')}>
+                  Sửa lại
+                </button>
+                <button type="button" className="btn btn-success fw-bold" disabled={submitting} onClick={handleSubmitNew}>
+                  {submitting && <span className="spinner-border spinner-border-sm me-1" />}
+                  Xác nhận gửi duyệt
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {step === 'success' && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 1050 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 text-center p-4" style={{ borderRadius: 16 }}>
+              <div className="text-success" style={{ fontSize: 56 }}>
+                ✓
+              </div>
+              <h4 className="fw-bold mt-2">Đã gửi duyệt</h4>
+              <p className="text-muted small mb-1">Mã tin đăng (chuẩn hóa):</p>
+              <div className="display-6 fw-bold text-primary mb-3">{formatListingId(createdListingId)}</div>
+              <p className="text-muted small">Media đã lưu vào Library và liên kết với tin này.</p>
+              <div className="d-flex gap-2 justify-content-center mt-3 flex-wrap">
+                <button type="button" className="btn btn-primary" onClick={resetCompose}>
+                  Soạn tin khác
+                </button>
+                <a href="/feature5" className="btn btn-outline-primary">
+                  Mở trang duyệt MKT
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resubmitTarget && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-xl modal-dialog-scrollable">
+            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 16 }}>
+              <div className="modal-header border-0 text-white" style={{ background: 'linear-gradient(90deg,#b45309,#d97706)' }}>
+                <div>
+                  <div className="small text-white-50 text-uppercase fw-bold mb-1">Gửi lại sau từ chối MKT</div>
+                  <h5 className="modal-title fw-bold mb-0">{formatListingId(resubmitTarget.listing.id)}</h5>
+                  {resubmitTarget.property && (
+                    <div className="mt-2 d-flex flex-wrap gap-2 align-items-center small">
+                      <span className="badge bg-light text-dark">Tài sản: {resubmitTarget.property.id}</span>
+                      <span
+                        className={`badge bg-${LV2_COLOR[resubmitTarget.property.level2_status || resubmitTarget.property.statusLv2] || 'secondary'} text-white`}
+                      >
+                        Lv2: {resubmitTarget.property.level2_status || resubmitTarget.property.statusLv2 || '—'}
+                      </span>
+                      <span className="text-white-50 d-none d-md-inline">Tiêu đề & mô tả được gen từ dữ liệu kho (có thể chỉnh)</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white"
+                  onClick={() => {
+                    setResubmitTarget(null);
+                    setResubmitNote('');
+                    setLocalMedia([]);
+                    setShowResubmitWebsitePreview(false);
+                  }}
+                  aria-label="Đóng"
+                />
+              </div>
+              <div className="modal-body bg-white">
+                {resubmitTarget.listing.rejection_note && (
+                  <div className="alert alert-danger border-0 shadow-sm small mb-4">
+                    <strong>Lý do từ chối trước:</strong> {resubmitTarget.listing.rejection_note}
+                  </div>
+                )}
+                <div className="row g-4">
+                  <div className="col-lg-6">
+                    <div className="fw-semibold mb-2 text-primary">
+                      <i className="bi bi-images me-2" />
+                      Ảnh & video tin đăng
+                    </div>
+                    <MediaEditorBlock
+                      localMedia={localMedia}
+                      setLocalMedia={setLocalMedia}
+                      imageUrlInput={imageUrlInput}
+                      setImageUrlInput={setImageUrlInput}
+                      videoUrlInput={videoUrlInput}
+                      setVideoUrlInput={setVideoUrlInput}
+                      showToast={showToast}
+                      disabled={false}
+                    />
+                  </div>
+                  <div className="col-lg-6">
+                    <div className="d-flex flex-wrap gap-2 mb-3">
+                      <button
+                        type="button"
+                        className="btn btn-outline-primary btn-sm fw-semibold"
+                        onClick={() => {
+                          const p = resubmitTarget.property;
+                          if (!p) return;
+                          setForm((f) => ({
+                            ...f,
+                            title: buildListingTitleFromProperty(p) || f.title,
+                            description: buildListingDescriptionFromProperty(p),
+                          }));
+                          showToast('Đã làm mới tiêu đề & mô tả từ tài sản kho.', 'success');
+                        }}
+                      >
+                        <i className="bi bi-magic me-1" />
+                        Làm mới từ tài sản
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm fw-semibold"
+                        onClick={() => setShowResubmitWebsitePreview(true)}
+                      >
+                        <i className="bi bi-eye me-1" />
+                        Xem trước bài đăng (website)
                       </button>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Ineligible notice */}
-          <div className="card border-0 shadow-sm">
-            <div className="card-header bg-light border-0">
-              <h6 className="mb-0 text-muted"><i className="bi bi-info-circle me-1"></i>Tài sản chưa đủ điều kiện (BR-001)</h6>
-            </div>
-            <div className="card-body p-0">
-              <table className="table table-hover mb-0 small">
-                <thead className="table-light"><tr><th>Mã LS</th><th>Địa chỉ</th><th>Level 1</th><th>Level 2</th><th>Lý do chặn</th></tr></thead>
-                <tbody>
-                  {ineligible.slice(0, 8).map(p => (
-                    <tr key={p.id}>
-                      <td><span className="badge bg-dark">{p.id}</span></td>
-                      <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.address}</td>
-                      <td><span className={`badge bg-${STATUS_COLOR[p.level1_status] || 'secondary'}`}>{p.level1_status}</span></td>
-                      <td><span className="badge bg-light text-dark border">{p.level2_status}</span></td>
-                      <td className="text-danger">
-                        {p.level2_status === 'Đang niêm yết' ? '⚠️ Đang có tin đăng hoạt động'
-                          : p.level1_status === 'Đã gỡ nguồn' ? '🚫 Đã gỡ khỏi kho'
-                          : p.level1_status === 'Bị từ chối' ? '❌ GĐ POS từ chối'
-                          : p.level1_status === 'Chờ POS duyệt' ? '⏳ Chờ phê duyệt'
-                          : '⏳ Chờ phê duyệt'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ─── STEP 2: Form soạn tin ─── */}
-      {step === 'form' && selectedProp && (
-        <div className="row g-4">
-          {/* Left: Info tài sản */}
-          <div className="col-md-4">
-            <div className="card border-0 shadow-sm sticky-top" style={{ top: 24 }}>
-              <div className="card-header fw-bold border-0" style={{ background: '#e8f4fd' }}>
-                <i className="bi bi-info-circle me-1 text-primary"></i>Thông tin tài sản (Auto-fill)
-              </div>
-              <div className="card-body small">
-                <div className="mb-2"><span className="badge bg-dark me-1">{selectedProp.id}</span><span className={`badge bg-${STATUS_COLOR[selectedProp.level1_status]}`}>{selectedProp.level1_status}</span></div>
-                <p className="fw-semibold">{selectedProp.address}</p>
-                <hr />
-                {[
-                  ['Loại hình', selectedProp.type],
-                  ['Giá', selectedProp.price_display],
-                  ['Diện tích', `${selectedProp.area}m²`],
-                  ['Kích thước', selectedProp.width ? `${selectedProp.width}m × ${selectedProp.length}m` : 'Chung cư (N/A)'],
-                  ['Phòng ngủ', `${selectedProp.bedrooms} PN`],
-                  ['WC', `${selectedProp.bathrooms} WC`],
-                  ['Hướng nhà', selectedProp.direction],
-                  ['Đường trước', selectedProp.road_width],
-                  ['Pháp lý', selectedProp.legal],
-                  ['POS', selectedProp.pos_name],
-                  ['Loại kho', selectedProp.warehouse_type],
-                ].map(([k, v]) => (
-                  <div key={k} className="d-flex justify-content-between mb-1">
-                    <span className="text-muted">{k}:</span>
-                    <span className="fw-semibold text-end" style={{ maxWidth: '60%' }}>{v}</span>
-                  </div>
-                ))}
-                <div className="alert alert-success mt-3 py-2 small">
-                  <i className="bi bi-magic me-1"></i><strong>Auto-fill:</strong> Dữ liệu đã tự điền vào form bên phải.
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right: Form */}
-          <div className="col-md-8">
-            <div className="card border-0 shadow-sm">
-              <div className="card-header fw-bold border-0" style={{ background: '#f8f9fa' }}>
-                <i className="bi bi-pencil-square me-1 text-primary"></i>Soạn nội dung tin đăng
-                <span className="badge bg-warning text-dark ms-2">Bước 2/3</span>
-              </div>
-              <div className="card-body">
-                {/* Title */}
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Tiêu đề tin đăng <span className="text-danger">*</span></label>
-                  <input className="form-control" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Tiêu đề hiển thị công khai trên iHouzz.com" />
-                  <div className="form-text">{form.title.length}/150 ký tự</div>
-                </div>
-
-                {/* Description */}
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Mô tả chi tiết <span className="text-danger">*</span></label>
-                  <textarea className="form-control" rows={8} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-                  <div className="form-text">{form.description.length}/2000 ký tự (khuyến nghị &gt; 300)</div>
-                </div>
-
-                {/* Contact */}
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">SĐT liên hệ <span className="text-danger">*</span></label>
-                  <input className="form-control" value={form.contact_phone} onChange={e => setForm(f => ({ ...f, contact_phone: e.target.value }))} placeholder="0901 234 567" />
-                </div>
-
-                {/* Images - Demo */}
-                <div className="mb-4">
-                  <label className="form-label fw-semibold">Hình ảnh / Video</label>
-                  <div className="border rounded p-3 bg-light text-center">
-                    <i className="bi bi-cloud-upload fs-3 text-muted"></i>
-                    <p className="text-muted small mt-1 mb-0">Kéo thả hoặc click để upload (demo: 3 ảnh mặc định sẽ được gắn)</p>
-                    <div className="mt-2 d-flex gap-2 justify-content-center">
-                      {['🏠', '🛋️', '🌿'].map((e, i) => (
-                        <div key={i} className="rounded border d-flex align-items-center justify-content-center" style={{ width: 64, height: 64, background: '#e9ecef', fontSize: 24 }}>{e}</div>
-                      ))}
+                    <div className="mb-3">
+                      <label className="form-label fw-semibold">Tiêu đề</label>
+                      <input className="form-control" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label fw-semibold">Mô tả (gen từ kho — chỉnh sửa tự do)</label>
+                      <textarea
+                        className="form-control"
+                        rows={10}
+                        value={form.description}
+                        onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label fw-semibold">SĐT liên hệ</label>
+                      <input
+                        className="form-control"
+                        value={form.contact_phone}
+                        onChange={(e) => setForm((f) => ({ ...f, contact_phone: e.target.value }))}
+                        placeholder="VD: 090x xxx xxx"
+                      />
+                    </div>
+                    <div className="mb-0">
+                      <label className="form-label fw-semibold">
+                        Ghi chú gửi lại <span className="text-danger">*</span> (≥ {RESUBMIT_NOTE_MIN} ký tự)
+                      </label>
+                      <textarea
+                        className="form-control"
+                        rows={3}
+                        placeholder="Mô tả phần đã chỉnh theo phản hồi MKT…"
+                        value={resubmitNote}
+                        onChange={(e) => setResubmitNote(e.target.value)}
+                      />
+                    </div>
+                    <div className="mt-4 p-3 rounded-3 border bg-light">
+                      <div className="fw-semibold mb-2 small text-muted">Xem nhanh media trong form</div>
+                      <MediaPreviewCarousel items={localMedia} slide={previewSlide} setSlide={setPreviewSlide} />
                     </div>
                   </div>
                 </div>
-
-                <div className="d-flex gap-2">
-                  <button className="btn btn-outline-secondary" onClick={() => setStep('select')}>← Quay lại</button>
-                  <button className="btn btn-outline-primary" onClick={() => setStep('preview')}>
-                    <i className="bi bi-eye me-1"></i>Xem trước
-                  </button>
-                  <button className="btn btn-primary ms-auto" onClick={handleSubmit} disabled={submitting}>
-                    {submitting ? <span className="spinner-border spinner-border-sm me-1"></span> : <i className="bi bi-send me-1"></i>}
-                    Gửi duyệt MKT
-                  </button>
-                </div>
+              </div>
+              <div className="modal-footer border-0 bg-light d-flex flex-wrap gap-2 justify-content-between">
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  onClick={() => {
+                    setResubmitTarget(null);
+                    setResubmitNote('');
+                    setLocalMedia([]);
+                    setShowResubmitWebsitePreview(false);
+                  }}
+                >
+                  Hủy
+                </button>
+                <button type="button" className="btn btn-warning fw-bold text-dark px-4" disabled={submitting} onClick={handleResubmit}>
+                  {submitting && <span className="spinner-border spinner-border-sm me-1" />}
+                  Gửi lại MKT
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ─── STEP 3: Preview ─── */}
-      {step === 'preview' && selectedProp && (
-        <div className="row justify-content-center">
-          <div className="col-lg-8">
-            <div className="card border-0 shadow-sm mb-3">
-              <div className="card-header fw-bold border-0 bg-info text-white">
-                <i className="bi bi-eye me-1"></i>Xem trước bài đăng – Bước 3/3
-              </div>
-              <div className="card-body">
-                <div className="rounded mb-3 d-flex gap-2">
-                  {['🏠', '🛋️', '🌿'].map((e, i) => (
-                    <div key={i} className="rounded d-flex align-items-center justify-content-center flex-grow-1" style={{ height: 140, background: '#e9ecef', fontSize: 40 }}>{e}</div>
-                  ))}
-                </div>
-                <h5 className="fw-bold">{form.title}</h5>
-                <div className="d-flex gap-2 mb-3">
-                  <span className="badge bg-primary fs-6">{selectedProp.price_display}</span>
-                  <span className="badge bg-light text-dark border">{selectedProp.area}m²</span>
-                  <span className="badge bg-light text-dark border">{selectedProp.bedrooms}PN/{selectedProp.bathrooms}WC</span>
-                  <span className={`badge bg-${selectedProp.type === 'Bán' ? 'danger' : 'info'}`}>{selectedProp.type}</span>
-                </div>
-                <pre className="bg-light rounded p-3 small" style={{ whiteSpace: 'pre-wrap' }}>{form.description}</pre>
-                <div className="alert alert-light border">📞 <strong>{form.contact_phone}</strong></div>
-                <div className="d-flex gap-2 mt-3">
-                  <button className="btn btn-outline-secondary" onClick={() => setStep('form')}>← Sửa lại</button>
-                  <button className="btn btn-success ms-auto" onClick={handleSubmit} disabled={submitting}>
-                    {submitting ? <span className="spinner-border spinner-border-sm me-1"></span> : <i className="bi bi-send-check me-1"></i>}
-                    Xác nhận gửi duyệt
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── STEP 4: Success ─── */}
-      {step === 'success' && (
-        <div className="row justify-content-center">
-          <div className="col-lg-6 text-center py-5">
-            <div style={{ fontSize: 80 }}>✅</div>
-            <h4 className="fw-bold mt-3 text-success">Gửi tin đăng thành công!</h4>
-            <p className="text-muted">Bài đăng của bạn đã được gửi đến bộ phận <strong>Marketing</strong> để kiểm duyệt.</p>
-            <div className="card border-0 shadow-sm text-start p-4 mb-4">
-              <div className="fw-semibold mb-2">📋 Thông tin đã gửi:</div>
-              <div className="small text-muted"><strong>Tài sản:</strong> {selectedProp?.id} – {selectedProp?.address}</div>
-              <div className="small text-muted"><strong>Tiêu đề:</strong> {form.title}</div>
-              <div className="small text-muted"><strong>Trạng thái bài đăng:</strong> <span className="badge bg-warning text-dark">Chờ duyệt</span></div>
-              <div className="small text-muted"><strong>SRS Reference:</strong> UC004, BR-001, FR4-001 → FR4-007</div>
-            </div>
-            <div className="d-flex gap-2 justify-content-center">
-              <button className="btn btn-primary" onClick={reset}><i className="bi bi-plus me-1"></i>Tạo tin mới</button>
-              <a href="/feature5" className="btn btn-success"><i className="bi bi-check2-square me-1"></i>Xem MKT Duyệt (F5)</a>
-            </div>
-          </div>
-        </div>
-      )}
+      <ListingWebsitePreviewModal
+        show={showResubmitWebsitePreview && !!resubmitTarget}
+        onHide={() => setShowResubmitWebsitePreview(false)}
+        title={form.title}
+        description={form.description}
+        contactPhone={form.contact_phone}
+        property={resubmitTarget?.property}
+        listing={resubmitTarget?.listing}
+        extraImageUrls={resubmitPreviewImageUrls}
+      />
     </div>
   );
 }

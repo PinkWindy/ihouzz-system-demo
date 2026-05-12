@@ -21,7 +21,8 @@ function Feature1_Login() {
 
   const handleLoginSubmit = (e) => {
     e.preventDefault();
-    if (email === 'admin@ihouzz.com' || email === 'sales@ihouzz.com' || email === 'mkt@ihouzz.com') {
+    const validEmails = ['admin@ihouzz.com', 'sales@ihouzz.com', 'mkt@ihouzz.com', 'marketing@ihouzz.com', 'pos@ihouzz.com', 'pos_manager@ihouzz.com', 'pos2_manager@ihouzz.com', 'sales2@ihouzz.com', 'hungnv@ihouzz.com', 'anhdv@ihouzz.com', 'tungtt@ihouzz.com'];
+    if (validEmails.includes(email)) {
       if (password === '123456') {
         setError('');
         setStep(2); // Chuyển sang bước OTP
@@ -44,7 +45,7 @@ function Feature1_Login() {
     }
   };
 
-  const handleOtpSubmit = (e) => {
+  const handleOtpSubmit = async (e) => {
     e.preventDefault();
     const otpString = otp.join('');
     if (otpString.length < 6) {
@@ -52,10 +53,59 @@ function Feature1_Login() {
       return;
     }
     if (otpString === '111111') { // Mock OTP đúng
-      // Lưu session (giả lập)
-      localStorage.setItem('user_role', email.split('@')[0]);
-      alert('✅ Đăng nhập thành công! Chuyển hướng đến Dashboard...');
-      navigate('/dashboard');
+      // Fetch user từ DB theo email
+      try {
+        const res = await fetch('http://localhost:5000/users');
+        const allUsers = await res.json();
+        let matchedUser = allUsers.find(u => u.email === email);
+
+        if (!matchedUser) {
+          // Fallback: tạo user giả dựa trên email nếu không tìm thấy trong DB
+          let r = email.split('@')[0];
+          if (r === 'mkt' || r === 'marketing') r = 'marketing';
+          else if (r.startsWith('pos')) r = 'pos_manager';
+          else if (r.startsWith('sales')) r = 'sales';
+          else if (r === 'admin') r = 'admin';
+
+          let posName = r === 'admin' || r === 'marketing' ? null : 'POS Q1';
+          if (email.includes('pos2') || email.includes('sales2')) posName = 'POS Chi Nhánh 2';
+
+          const posIdFallback =
+            posName === 'POS Chi Nhánh 2' ? 3 : posName ? 1 : null;
+          matchedUser = {
+            id: `u_${r}`,
+            name: email.split('@')[0],
+            role: r,
+            pos_name: posName,
+            pos_id: posIdFallback,
+            email: email,
+            status: 'active',
+          };
+        }
+
+        // Chuẩn hóa role
+        let role = matchedUser.role;
+        if (role === 'pos') role = 'pos_manager';
+        if (role === 'mkt') role = 'marketing';
+        const pidRaw = matchedUser.pos_id;
+        const pos_id =
+          pidRaw === '' || pidRaw == null ? null : Number(pidRaw);
+        matchedUser = {
+          ...matchedUser,
+          role,
+          pos_id: Number.isNaN(pos_id) ? null : pos_id,
+        };
+
+        // Lưu object user đầy đủ vào localStorage
+        localStorage.setItem('user', JSON.stringify(matchedUser));
+        localStorage.setItem('user_role', role); // backward compat
+        localStorage.setItem('pos_name', matchedUser.pos_name || ''); // backward compat
+
+        alert(`✅ Xin chào ${matchedUser.name}! Đăng nhập thành công.`);
+        navigate('/dashboard');
+      } catch {
+        setError('Không thể kết nối máy chủ. Hãy chắc chắn API đang chạy ở cổng 5000.');
+      }
     } else {
       setError('Mã OTP không hợp lệ. Vui lòng thử nhập: 111111');
     }
