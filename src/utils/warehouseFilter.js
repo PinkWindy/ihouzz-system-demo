@@ -3,6 +3,8 @@
  * Tách ra để kiểm thử tự động (Vitest) và tránh sai lệch logic.
  */
 
+import { sameUserId } from './userId.js';
+
 export function filterWarehouseProperties(props, ctx) {
   const {
     ROLE,
@@ -16,7 +18,7 @@ export function filterWarehouseProperties(props, ctx) {
   } = ctx;
 
   return props.filter((p) => {
-    if (!showRemoved && p.level1_status === 'Đã gỡ nguồn') return false;
+    if (!showRemoved && filterLv1 !== 'Đã gỡ nguồn' && p.level1_status === 'Đã gỡ nguồn') return false;
     if (
       search &&
       !String(p.id).toLowerCase().includes(String(search).toLowerCase()) &&
@@ -27,7 +29,7 @@ export function filterWarehouseProperties(props, ctx) {
     if (filterLv1 && p.level1_status !== filterLv1) return false;
     if (filterType && p.type !== filterType) return false;
 
-    if (filterPOS === 'MINE') return p.createdBy_id === USER_ID;
+    if (filterPOS === 'MINE') return sameUserId(p.createdBy_id, USER_ID);
     if (filterPOS && filterPOS !== 'ALL') return p.pos_name === filterPOS;
 
     if (ROLE === 'admin' || ROLE === 'marketing') return true;
@@ -40,11 +42,11 @@ export function filterWarehouseProperties(props, ctx) {
 
 /** Thống kê “tài sản của tôi” trên F9 (cùng logic component). */
 export function warehouseMyProps(props, ROLE, POS_NAME, USER_ID) {
-  if (ROLE === 'admin') return props;
+  if (ROLE === 'admin' || ROLE === 'marketing') return props;
   if (ROLE === 'pos_manager') {
     const pn = POS_NAME != null ? String(POS_NAME).trim() : '';
     if (!pn) return [];
     return props.filter((p) => p.pos_name === POS_NAME);
   }
-  return props.filter((p) => p.createdBy_id === USER_ID);
+  return props.filter((p) => sameUserId(p.createdBy_id, USER_ID));
 }

@@ -3,6 +3,8 @@
  * Dữ liệu nháp lưu ở `pending_update_payload`; cờ `update_request_status === 'Chờ duyệt cập nhật'`.
  */
 
+import { sameUserId } from './userId.js';
+
 export const UPDATE_REQUEST_PENDING = 'Chờ duyệt cập nhật';
 
 /**
@@ -50,7 +52,7 @@ export function canRequestPropertyUpdate(property, userId, listings = []) {
   if (property.update_request_status === UPDATE_REQUEST_PENDING) return false;
   const lv1 = property.level1_status || property.statusLv1;
   if (!['Được duyệt', 'Được đảm bảo'].includes(lv1)) return false;
-  if (userId && property.createdBy_id && property.createdBy_id !== userId) return false;
+  if (userId && property.createdBy_id && !sameUserId(property.createdBy_id, userId)) return false;
   if (propertyHasLiveListingForUpdateLock(property, listings)) return false;
   return true;
 }
@@ -111,13 +113,45 @@ export function diffPropertyUpdate(current, pending) {
 }
 
 export function buildPriceDisplayFromFields({ price, priceUnit, type }) {
-  const n = Number(price);
-  if (!Number.isFinite(n)) return '';
-  const base = `${n.toLocaleString('en-US')} ${priceUnit || 'VNĐ'}`;
-  if (type === 'Thuê' && priceUnit && !String(priceUnit).includes('tháng')) {
-    return base;
+  const numPrice = Number(price);
+  if (!Number.isFinite(numPrice) || numPrice <= 0) return '—';
+
+  let rawValue = numPrice;
+  const unitStr = String(priceUnit || '').trim().toLowerCase();
+
+  if (type === 'Bán') {
+    if (unitStr.includes('tỷ')) {
+      rawValue = numPrice * 1_000_000_000;
+    } else if (unitStr.includes('triệu') || unitStr.includes('tr')) {
+      rawValue = numPrice * 1_000_000;
+    }
+
+    if (rawValue >= 1_000_000_000) {
+      const val = rawValue / 1_000_000_000;
+      return `${parseFloat(val.toFixed(3))} Tỷ VNĐ`;
+    } else if (rawValue >= 1_000_000) {
+      const val = rawValue / 1_000_000;
+      return `${parseFloat(val.toFixed(3))} Triệu VNĐ`;
+    } else {
+      return `${rawValue.toLocaleString('en-US')} VNĐ`;
+    }
+  } else {
+    // Thuê
+    if (unitStr.includes('triệu') || unitStr.includes('tr')) {
+      rawValue = numPrice * 1_000_000;
+    } else if (numPrice > 0 && numPrice < 1000) {
+      // Fallback: nếu người dùng nhập số nhỏ (ví dụ 18) nhưng chọn đơn vị không chứa 'triệu'
+      // Ta vẫn tự động coi như là Triệu nếu số nhỏ dưới 1000 cho Thuê
+      rawValue = numPrice * 1_000_000;
+    }
+
+    if (rawValue >= 1_000_000) {
+      const val = rawValue / 1_000_000;
+      return `${parseFloat(val.toFixed(3))} Triệu VNĐ/Tháng`;
+    } else {
+      return `${rawValue.toLocaleString('en-US')} VNĐ/Tháng`;
+    }
   }
-  return base;
 }
 
 /** Gộp pending đã duyệt vào bản ghi (chỉ các khóa được phép). Trả về object để PUT/PATCH. */

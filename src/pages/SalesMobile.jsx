@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { API_BASE_URL } from '../config';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import SmartAddress from '../components/SmartAddress';
 import { DEFAULT_PROVINCE } from '../data/hcmAdminUnits';
@@ -12,18 +13,27 @@ import {
   splitUrls,
   isHttpUrl,
 } from '../utils/mediaLibraryApi';
+import { sameUserId } from '../utils/userId';
 import {
   API,
   readSessionUser,
   postAuditLog,
+  postEntityAudit,
   buildLogAction,
+  AUDIT_ACTION_TYPE,
   RESUBMIT_NOTE_MIN,
   propertySequenceNumber,
   listingSequenceNumber,
   formatListingId,
+  formatPropertyId,
+  propertyMatchesExternalRef,
+  SESSION_CHANGED_EVENT,
   buildListingTitleFromProperty,
   buildListingDescriptionFromProperty,
   mergePreviewImageUrls,
+  confirmDuplicateListingWarningAsync,
+  listingRequestHeaders,
+  resolveDuplicateListing409,
 } from '../utils/listingWorkflow';
 import ListingWebsitePreviewModal from '../components/ListingWebsitePreviewModal';
 import {
@@ -35,51 +45,23 @@ import {
   propertyHasLiveListingForUpdateLock,
   initialPendingUpdateFormState,
 } from '../utils/propertyUpdateWorkflow';
+import {
+  MY_PROPS_STATUS_ALL,
+  MY_PROPS_STATUS_OPTIONS,
+  filterMyPropsForTab,
+  formatMyPropsPriceDisplay,
+  normalizeJsonServerList,
+  warehouseLabel,
+} from '../utils/myPropsTab';
+import {
+  buildFullAddress,
+  validatePropertySubmit,
+  findDuplicateProperties,
+  propertyToAddressFields,
+} from '../utils/propertyCreateWorkflow';
 
 function newMediaClientKey() {
   return `m_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-/** Tìm theo chuỗi con trên mọi trường hiển thị / kỹ thuật phổ biến của tài sản. */
-function propertyMatchesOwnerSearch(property, rawQuery) {
-  const q = String(rawQuery || '').trim().toLowerCase();
-  if (!q) return true;
-  const parts = [
-    property.id,
-    property.propertyCode,
-    property.address,
-    property.district,
-    property.ward,
-    property.type,
-    property.propertyType,
-    property.level1_status,
-    property.level2_status,
-    property.statusLv1,
-    property.statusLv2,
-    property.pos_name,
-    property.manager_name,
-    property.pos_manager,
-    property.createdBy,
-    property.price_display,
-    property.description,
-    property.rejection_reason,
-    property.rejected_reason,
-    property.update_request_status,
-    property.legalStatus,
-    property.legal,
-    property.condition,
-    property.source,
-    property.furniture,
-    property.direction,
-    property.futureWard,
-    String(property.price ?? ''),
-    String(property.area ?? ''),
-    String(property.bedrooms ?? ''),
-    String(property.bathrooms ?? ''),
-    String(property.floor ?? ''),
-  ].filter((x) => x != null && String(x).trim() !== '');
-  const hay = parts.join(' ').toLowerCase();
-  return hay.indexOf(q) >= 0;
 }
 
 /**
@@ -92,6 +74,8 @@ function SalesMobile() {
   const [properties, setProperties] = useState([]);
   const [listings, setListings] = useState([]);
   const [myPropsSearch, setMyPropsSearch] = useState('');
+  const [myPropsStatusFilter, setMyPropsStatusFilter] = useState(MY_PROPS_STATUS_ALL);
+  const [includeRemovedMyProps, setIncludeRemovedMyProps] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Form state - ĐỒNG NHẤT với Feature2_Create
@@ -157,8 +141,29 @@ function SalesMobile() {
   const [unlistTarget, setUnlistTarget] = useState(null);
   const [unlistReason, setUnlistReason] = useState('');
 
-  const userStr0 = localStorage.getItem('user');
-  const currentUserObj = userStr0 ? JSON.parse(userStr0) : {};
+  const [sessionRev, setSessionRev] = useState(0);
+  const [fetchError, setFetchError] = useState(null);
+
+  useEffect(() => {
+    const bump = () => setSessionRev((n) => n + 1);
+    const onStorage = (e) => {
+      if (e.key === 'user' || e.key === 'user_role' || e.key === 'pos_name' || e.key === null) bump();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(SESSION_CHANGED_EVENT, bump);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') bump();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(SESSION_CHANGED_EVENT, bump);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
+
+  const currentUserObj = useMemo(() => readSessionUser(), [sessionRev]);
+
   const USER_ID = currentUserObj.id || '';
 
   /** Chỉnh sửa TS sau khi GĐ POS từ chối */
@@ -180,14 +185,40 @@ function SalesMobile() {
   const [showMktListingPreview, setShowMktListingPreview] = useState(false);
   const [mktSubmitting, setMktSubmitting] = useState(false);
 
-  const myPropsListBase = useMemo(
-    () => (USER_ID ? properties.filter((p) => p.createdBy_id === USER_ID) : properties),
-    [properties, USER_ID],
-  );
+  /** Hoàn thiện hồ sơ nháp (đồng bộ Feature2_Create — Web) */
+  const [mobileDraftProp, setMobileDraftProp] = useState(null);
+  const [mobileDraftForm, setMobileDraftForm] = useState(null);
+  const [mobileDraftExtraFiles, setMobileDraftExtraFiles] = useState([]);
+  const [mobileDraftSubmitting, setMobileDraftSubmitting] = useState(false);
+  /** 1: eSign KH · 2: Kho đảm bảo · 3: Đã ký / POS */
+  const [mobileDraftBranch, setMobileDraftBranch] = useState(null);
 
-  const myPropsList = useMemo(
-    () => myPropsListBase.filter((p) => propertyMatchesOwnerSearch(p, myPropsSearch)),
-    [myPropsListBase, myPropsSearch],
+  const myPropsListBase = useMemo(() => {
+    if (!USER_ID) return [];
+    /** Giống F2 (`Feature2_Create.jsx`): lọc theo `createdBy_id`. */
+    const byId = new Map();
+    properties.forEach((p) => {
+      if (p && sameUserId(p.createdBy_id, USER_ID)) byId.set(p.id, p);
+    });
+    const name = (currentUserObj.name || '').trim();
+    listings.forEach((l) => {
+      if (!l || !(sameUserId(l.createdBy_id, USER_ID) || (name && l.createdBy === name))) return;
+      const ref = l.property_id;
+      if (ref == null || ref === '') return;
+      const p = properties.find((x) => x && propertyMatchesExternalRef(x, ref));
+      if (p) byId.set(p.id, p);
+    });
+    return Array.from(byId.values());
+  }, [properties, listings, USER_ID, currentUserObj.name]);
+
+  const myPropsDisplayed = useMemo(
+    () =>
+      filterMyPropsForTab(myPropsListBase, {
+        statusKey: myPropsStatusFilter,
+        hideRemovedSource: !includeRemovedMyProps,
+        search: myPropsSearch,
+      }),
+    [myPropsListBase, myPropsStatusFilter, includeRemovedMyProps, myPropsSearch],
   );
 
   const myRejectedMktListings = useMemo(() => {
@@ -197,7 +228,7 @@ function SalesMobile() {
       (l) =>
         l &&
         l.listing_status === 'Từ chối' &&
-        (l.createdBy_id === USER_ID || (name && l.createdBy === name)),
+        (sameUserId(l.createdBy_id, USER_ID) || (name && l.createdBy === name)),
     );
   }, [listings, USER_ID, currentUserObj.name]);
 
@@ -280,12 +311,21 @@ function SalesMobile() {
       pendingRaw,
       upTarget.id,
     );
+    const changes = diffPropertyUpdate(upTarget, pendingToSend);
     try {
-      await axios.patch(`http://localhost:5000/properties/${encodeURIComponent(upTarget.id)}`, {
+      await axios.patch(`\${API_BASE_URL}/properties/${encodeURIComponent(upTarget.id)}`, {
         ...meta,
         pending_update_payload: pendingToSend,
       });
-      await logAudit('Gửi yêu cầu phê duyệt cập nhật TS (Mobile)', upTarget.id);
+      await logAudit('Gửi yêu cầu phê duyệt cập nhật TS (Mobile)', upTarget.id, {
+        actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_UPDATE_REQUEST,
+        property_id: upTarget.propertyCode || upTarget.id,
+        modified_fields:
+          changes.length > 0
+            ? Object.fromEntries(changes.map((c) => [String(c.field), { old: c.old, new: c.new }]))
+            : undefined,
+        extra: { changesPreview: changes.map((c) => c.field) },
+      });
       setUpTarget(null);
       setUpForm(null);
       setUpExtraFiles([]);
@@ -464,6 +504,7 @@ function SalesMobile() {
       }
       await postAuditLog({
         actionText: buildLogAction('Đầu chủ (Mobile) gửi lại duyệt', listing.id, `Ghi chú: ${mktResubmitNote.trim().slice(0, 120)}`),
+        actionType: AUDIT_ACTION_TYPE.LISTING_RESUBMIT_FOR_REVIEW,
         listingId: listing.id,
         userName: u.name || u.email || 'User',
         userId: u.id || '',
@@ -471,6 +512,11 @@ function SalesMobile() {
         oldStatus: 'Từ chối',
         newStatus: 'Chờ duyệt chỉnh sửa',
         detail: mktResubmitNote.trim(),
+        modifiedFields: {
+          title: { from: listing.title || '', to: mktResubmitForm.title.trim() },
+          description: { from: listing.description || '', to: mktResubmitForm.description.trim() },
+          resubmit_note: mktResubmitNote.trim(),
+        },
       });
       closeMktResubmit();
       await fetchData();
@@ -483,21 +529,60 @@ function SalesMobile() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  const fetchData = useCallback(async () => {
+    setFetchError(null);
+    try {
+      const [resP, resL] = await Promise.all([
+        axios.get(`${API}/properties`, { headers: { 'Cache-Control': 'no-cache' } }),
+        axios.get(`${API}/listings`, { headers: { 'Cache-Control': 'no-cache' } }),
+      ]);
+      setProperties(normalizeJsonServerList(resP.data));
+      setListings(normalizeJsonServerList(resL.data));
+    } catch (err) {
+      console.error("SalesMobile fetchData error", err);
+      setFetchError(
+        err?.response?.data?.message || err?.message || 'Không tải được dữ liệu. Hãy chạy API json-server tại cổng 5000.',
+      );
+    }
+  }, []);
 
-  const fetchData = async () => {
-    const [resP, resL] = await Promise.all([
-      axios.get('http://localhost:5000/properties'),
-      axios.get('http://localhost:5000/listings'),
-    ]);
-    setProperties(resP.data);
-    setListings(resL.data);
-  };
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-  const logAudit = async (action, entityId) => {
-    await axios.post('http://localhost:5000/logs', {
-      timestamp: new Date().toISOString(), action, entityId, user: 'Đầu chủ (Mobile)'
-    });
+  useEffect(() => {
+    if (activeTab === 'myprops') fetchData();
+  }, [activeTab, sessionRev, fetchData]);
+
+  /** Điện thoại vs máy tính: không có chung `storage` — làm mới nhẹ khi đang xem tab. */
+  useEffect(() => {
+    if (activeTab !== 'myprops') return undefined;
+    const id = setInterval(() => {
+      fetchData();
+    }, 28000);
+    return () => clearInterval(id);
+  }, [activeTab, fetchData]);
+
+  const logAudit = async (action, entityId, opts = {}) => {
+    try {
+      await postEntityAudit({
+        action,
+        actionType: opts.actionType || AUDIT_ACTION_TYPE.MOBILE_AUDIT_GENERIC,
+        entityId: entityId != null ? String(entityId) : '',
+        property_id: opts.property_id != null ? String(opts.property_id) : entityId != null ? String(entityId) : '',
+        listing_id: opts.listing_id,
+        user: opts.user || currentUserObj.name || 'Đầu chủ (Mobile)',
+        user_id: USER_ID,
+        old_status: opts.old_status,
+        new_status: opts.new_status,
+        reason: opts.reason,
+        detail: opts.detail,
+        modified_fields: opts.modified_fields,
+        extra: opts.extra,
+      });
+    } catch (err) {
+      console.error('SalesMobile logAudit error', err);
+    }
   };
 
   const fullAddress = [address.houseNumber, address.street && `đường ${address.street}`,
@@ -505,11 +590,15 @@ function SalesMobile() {
 
   const handleDupCheck = async () => {
     if (formData.type !== 'Bán' || !address.houseNumber || !address.street) return;
-    const res = await axios.get('http://localhost:5000/properties');
-    const q = `${address.houseNumber} ${address.street}`.toLowerCase();
-    const dups = res.data.filter(p => p.type === 'Bán' && p.address?.toLowerCase().includes(q));
-    if (dups.length > 0) { setDupAlert('dup'); setDupInfo(dups[0]); }
-    else { setDupAlert('clear'); }
+    try {
+      const res = await axios.get(`${API}/properties`);
+      const q = `${address.houseNumber} ${address.street}`.toLowerCase();
+      const dups = res.data.filter(p => p.type === 'Bán' && p.address?.toLowerCase().includes(q));
+      if (dups.length > 0) { setDupAlert('dup'); setDupInfo(dups[0]); }
+      else { setDupAlert('clear'); }
+    } catch (err) {
+      console.error("SalesMobile handleDupCheck error", err);
+    }
   };
 
   const handleCreateProp = async (e) => {
@@ -528,9 +617,10 @@ function SalesMobile() {
     }
     setSubmitting(true);
     try {
-      const res = await axios.get('http://localhost:5000/properties');
+      const res = await axios.get(`\${API_BASE_URL}/properties`);
       const maxId = res.data.reduce((max, p) => {
-        const n = propertySequenceNumber(p.id);
+        const idToCheck = p.propertyCode || p.id;
+        const n = propertySequenceNumber(idToCheck);
         return n != null ? Math.max(max, n) : max;
       }, 0);
       const newId = `LS-${String(maxId + 1).padStart(5, '0')}`;
@@ -546,7 +636,7 @@ function SalesMobile() {
         }
       }
 
-      await axios.post('http://localhost:5000/properties', {
+      await axios.post(`\${API_BASE_URL}/properties`, {
         id: newId,
         propertyCode: newId,
         address: fullAddress,
@@ -578,7 +668,10 @@ function SalesMobile() {
         pos_name: currentUserObj.pos_name || 'POS Q1',
         pos_id: currentUserObj.pos_id || 1,
       });
-      await logAudit('Tạo tài sản mới (Mobile)', newId);
+      await logAudit('Tạo tài sản mới (Mobile)', newId, {
+        actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_SUBMIT_WAREHOUSE,
+        new_status: 'Chờ POS duyệt',
+      });
       alert(`✅ Đã gửi duyệt nhập kho: ${newId}`);
       setAddress({ province: DEFAULT_PROVINCE, district: '', ward: '', futureWard: '', houseNumber: '', street: '' });
       setFormData({
@@ -736,7 +829,8 @@ function SalesMobile() {
     const list = res.data;
     let max = 0;
     for (const l of list) {
-      const n = listingSequenceNumber(l.id);
+      const idToCheck = l.listingCode || l.id;
+      const n = listingSequenceNumber(idToCheck);
       if (n != null) max = Math.max(max, n);
     }
     return formatListingId(String(max + 1));
@@ -783,30 +877,77 @@ function SalesMobile() {
       return;
     }
     const u = readSessionUser();
+    const dupConfirm = await confirmDuplicateListingWarningAsync({
+      listings,
+      propertyRef: listingForm.id,
+      propertyCode: listingForm.propertyCode || listingForm.id,
+      actionPrompt:
+        'Bạn có chắc muốn GỬI DUYỆT thêm tin cho tài sản này không? (Chọn OK để tiếp tục.)',
+      audit: {
+        userName: u.name || u.email || 'Sales',
+        userId: u.id || '',
+        propertyId: listingForm.id,
+        screen: 'Mobile',
+        action: 'LISTING_SUBMIT',
+      },
+    });
+    if (!dupConfirm.ok) return;
+
     setListingComposeSubmitting(true);
     try {
       const newLTId = await nextLTIdForMobile();
       const now = new Date().toISOString();
-      await fetch(`${API}/listings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: newLTId,
-          property_id: listingForm.id,
-          title: listingTitle.trim(),
-          description: listingDesc.trim(),
-          contact_phone: listingContactPhone.trim(),
-          images: [],
-          videos: [],
-          mediaLibraryIds: [],
-          listing_status: 'Chờ duyệt',
-          createdBy: u.name || 'Sales',
-          createdBy_id: u.id || '',
-          createdAt: now,
-          updatedAt: now,
-          expiredAt: null,
-        }),
+      const postBody = JSON.stringify({
+        id: newLTId,
+        listingCode: newLTId,
+        property_id: listingForm.id,
+        title: listingTitle.trim(),
+        description: listingDesc.trim(),
+        contact_phone: listingContactPhone.trim(),
+        images: [],
+        videos: [],
+        mediaLibraryIds: [],
+        listing_status: 'Chờ duyệt',
+        createdBy: u.name || 'Sales',
+        createdBy_id: u.id || '',
+        createdAt: now,
+        updatedAt: now,
+        expiredAt: null,
       });
+      const doPost = (force) =>
+        fetch(`${API}/listings`, {
+          method: 'POST',
+          headers: listingRequestHeaders(force),
+          body: postBody,
+        });
+      let res = await doPost(dupConfirm.forceDuplicate);
+      if (res.status === 409) {
+        const retried = await resolveDuplicateListing409(
+          res,
+          (force) => doPost(force),
+          {
+            listings,
+            propertyRef: listingForm.id,
+            propertyCode: listingForm.propertyCode || listingForm.id,
+            actionPrompt:
+              'Bạn có chắc muốn GỬI DUYỆT thêm tin cho tài sản này không? (Chọn OK để tiếp tục.)',
+            audit: {
+              userName: u.name || u.email || 'Sales',
+              userId: u.id || '',
+              propertyId: listingForm.id,
+              listingId: newLTId,
+              screen: 'Mobile',
+              action: 'LISTING_SUBMIT',
+            },
+          },
+        );
+        if (retried === null) {
+          setListingComposeSubmitting(false);
+          return;
+        }
+        res = retried;
+      }
+      if (!res.ok) throw new Error(`POST listings ${res.status}`);
       if (listingComposeMedia.length > 0) {
         await syncListingMediaFieldsMobile(newLTId, listingForm.id, u, listingComposeMedia);
       }
@@ -817,6 +958,7 @@ function SalesMobile() {
       });
       await postAuditLog({
         actionText: buildLogAction('Tạo & gửi duyệt bài đăng (Mobile)', newLTId, `TS ${listingForm.id}`),
+        actionType: AUDIT_ACTION_TYPE.LISTING_SUBMIT_FOR_REVIEW,
         listingId: newLTId,
         userName: u.name || u.email || 'User',
         userId: u.id || '',
@@ -837,10 +979,13 @@ function SalesMobile() {
   };
 
   const handleRequestUnlist = async () => {
-    if (!unlistReason) { alert('❌ Bắt buộc chọn lý do gỡ tin! (BR-005)'); return; }
+    if (!unlistReason) { alert('❌ Vui lòng chọn lý do gỡ tin.'); return; }
     const p = unlistTarget;
-    await axios.put(`http://localhost:5000/properties/${p.id}`, { ...p, statusLv2: `Yêu cầu gỡ: ${unlistReason}` });
-    await logAudit(`Yêu cầu gỡ tin: ${unlistReason}`, p.id);
+    await axios.put(`${API}/properties/${p.id}`, { ...p, statusLv2: `Yêu cầu gỡ: ${unlistReason}` });
+    await logAudit(`Yêu cầu gỡ tin: ${unlistReason}`, p.id, {
+      reason: unlistReason,
+      detail: 'Mobile: cập nhật property theo flow đơn giản hóa (json-server demo).',
+    });
     alert('✅ Đã gửi yêu cầu gỡ tin!');
     setUnlistTarget(null); setUnlistReason('');
     fetchData();
@@ -849,12 +994,16 @@ function SalesMobile() {
   const handleRemoveSource = async (p) => {
     const lv2 = p.level2_status || p.statusLv2;
     if (lv2 === 'Đang niêm yết') {
-      alert('❌ Tài sản đang niêm yết! Phải gỡ tin trước (BR-010)');
+      alert('❌ Tài sản đang niêm yết. Vui lòng gỡ tin trước khi gỡ nguồn.');
       return;
     }
     if (!window.confirm('⚠️ Yêu cầu Gỡ Nguồn sẽ gửi đến GĐ POS duyệt. Xác nhận?')) return;
-    await axios.put(`http://localhost:5000/properties/${p.id}`, { ...p, statusLv1: 'Chờ duyệt gỡ nguồn', level1_status: 'Chờ duyệt gỡ nguồn' });
-    await logAudit('Yêu cầu gỡ nguồn (Mobile F8)', p.id);
+    await axios.put(`${API}/properties/${p.id}`, { ...p, statusLv1: 'Chờ duyệt gỡ nguồn', level1_status: 'Chờ duyệt gỡ nguồn' });
+    await logAudit('Yêu cầu gỡ nguồn (Mobile F8)', p.id, {
+      actionType: AUDIT_ACTION_TYPE.PROPERTY_F8_UNSOURCE_REQUEST,
+      old_status: p.level1_status || p.statusLv1,
+      new_status: 'Chờ duyệt gỡ nguồn',
+    });
     alert('✅ Đã gửi yêu cầu gỡ nguồn!');
     fetchData();
   };
@@ -900,7 +1049,7 @@ function SalesMobile() {
       }
     }
     const merged = [...existing, ...newUrls];
-    await axios.patch(`http://localhost:5000/properties/${reopenRejected.id}`, {
+    await axios.patch(`${API}/properties/${reopenRejected.id}`, {
       description: rejectedDesc,
       images: merged,
       level1_status: 'Chờ POS duyệt',
@@ -909,15 +1058,370 @@ function SalesMobile() {
       resubmit_property_note: rejectedNote.trim(),
       updatedAt: new Date().toISOString(),
     });
-    await logAudit('Đầu chủ chỉnh sửa TS sau từ chối POS & gửi lại duyệt', reopenRejected.id);
+    await logAudit('Đầu chủ chỉnh sửa TS sau từ chối POS & gửi lại duyệt', reopenRejected.id, {
+      actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_SUBMIT_WAREHOUSE,
+    });
     setReopenRejected(null);
     setRejectedExtraFiles([]);
     fetchData();
     alert('✅ Đã gửi lại GĐ POS duyệt.');
   };
 
+  const closeMobileDraftModal = () => {
+    setMobileDraftProp(null);
+    setMobileDraftForm(null);
+    setMobileDraftExtraFiles([]);
+    setMobileDraftBranch(null);
+    setMobileDraftSubmitting(false);
+  };
+
+  const countMobileDraftImages = (form, extraFiles) => {
+    const existing = (form?.images || []).filter(Boolean).length;
+    const pending = (extraFiles || []).filter((f) => f.type.startsWith('image/')).length;
+    return existing + pending;
+  };
+
+  const handleMobileDraftFileChange = (e) => {
+    const sel = Array.from(e.target.files || []);
+    e.target.value = '';
+    for (const file of sel) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert(`File "${file.name}" vượt quá 10MB.`);
+        return;
+      }
+      const isImage =
+        file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(file.name || '');
+      if (!isImage) {
+        alert(`"${file.name}" không phải ảnh hợp lệ. Chỉ chấp nhận JPG, PNG, WebP.`);
+        return;
+      }
+    }
+    setMobileDraftExtraFiles((prev) => [...prev, ...sel]);
+  };
+
+  const resolveMobileDraftImages = async (propertyId, form, extraFiles) => {
+    const kept = (form?.images || []).filter(Boolean);
+    const imgNew = (extraFiles || []).filter((f) => f.type.startsWith('image/'));
+    const newUrls = [];
+    for (let i = 0; i < imgNew.length; i++) {
+      try {
+        newUrls.push(await readFileAsDataURL(imgNew[i], MAX_IMAGE_BYTES));
+      } catch {
+        newUrls.push(
+          `https://picsum.photos/seed/mob-draft-${encodeURIComponent(propertyId)}-${Date.now()}-${i}/1200/800`,
+        );
+      }
+    }
+    return [...kept, ...newUrls].slice(0, 20);
+  };
+
+  const openMobileDraftModal = (p) => {
+    setMobileDraftProp(p);
+    setMobileDraftExtraFiles([]);
+    setMobileDraftBranch(null);
+    setMobileDraftForm({
+      type: p.type || 'Bán',
+      propertyType: p.propertyType || 'Căn hộ chung cư',
+      area: p.area || '',
+      price: p.price ? Number(p.price).toLocaleString('en-US') : '',
+      priceUnit: p.priceUnit || 'tỷ VNĐ',
+      direction: p.direction || '',
+      condition: p.condition || '',
+      source: p.source || '',
+      furniture: p.furniture || '',
+      floor: p.floor ?? '',
+      bedrooms: p.bedrooms ?? '',
+      bathrooms: p.bathrooms ?? '',
+      description: p.description || '',
+      legalStatus: p.legalStatus || p.legal || 'Sổ đỏ',
+      addressFields: propertyToAddressFields(p),
+      images: Array.isArray(p.images) ? p.images.filter(Boolean) : [],
+    });
+  };
+
+  const assertMobileDraftDupOk = async (addr, listingType, excludeId) => {
+    if (listingType !== 'Bán') return true;
+    try {
+      const res = await axios.get(`${API}/properties`);
+      const dups = findDuplicateProperties(res.data, { type: listingType, address: addr, excludeId });
+      if (dups.length === 0) return true;
+      return window.confirm(
+        `⚠️ Phát hiện địa chỉ có thể trùng với hồ sơ ${formatPropertyId(dups[0].propertyCode || dups[0].id)}. Vẫn tiếp tục gửi duyệt?`,
+      );
+    } catch {
+      alert('Không kiểm tra được trùng địa chỉ. Vui lòng thử lại.');
+      return false;
+    }
+  };
+
+  const handleMobileDraftSaveOnly = async () => {
+    if (!mobileDraftProp || !mobileDraftForm) return;
+    const draftAddr = mobileDraftForm.addressFields || propertyToAddressFields(mobileDraftProp);
+    if (!mobileDraftForm.area && !mobileDraftForm.price && !buildFullAddress(draftAddr)) {
+      alert('Vui lòng nhập ít nhất một số thông tin (địa chỉ, diện tích hoặc giá) trước khi lưu nháp.');
+      return;
+    }
+    setMobileDraftSubmitting(true);
+    const now = new Date().toISOString();
+    let mergedImages = (mobileDraftForm.images || []).filter(Boolean);
+    if (mobileDraftExtraFiles.length > 0) {
+      try {
+        mergedImages = await resolveMobileDraftImages(mobileDraftProp.id, mobileDraftForm, mobileDraftExtraFiles);
+      } catch (err) {
+        alert(err?.message || 'Không xử lý được file ảnh.');
+        setMobileDraftSubmitting(false);
+        return;
+      }
+    }
+    const payload = {
+      type: mobileDraftForm.type,
+      propertyType: mobileDraftForm.propertyType,
+      area: Number(String(mobileDraftForm.area).replace(/,/g, '')) || 0,
+      price: Number(String(mobileDraftForm.price).replace(/,/g, '')) || 0,
+      priceUnit: mobileDraftForm.priceUnit,
+      direction: mobileDraftForm.direction,
+      condition: mobileDraftForm.condition,
+      source: mobileDraftForm.source,
+      furniture: mobileDraftForm.furniture,
+      floor: mobileDraftForm.floor === '' || mobileDraftForm.floor == null ? null : parseInt(String(mobileDraftForm.floor), 10),
+      bedrooms: Number(mobileDraftForm.bedrooms) || 0,
+      bathrooms: Number(mobileDraftForm.bathrooms) || 0,
+      description: mobileDraftForm.description,
+      legalStatus: mobileDraftForm.legalStatus,
+      address: buildFullAddress(draftAddr) || mobileDraftProp.address,
+      district: draftAddr.district || '',
+      ward: draftAddr.ward || '',
+      houseNumber: draftAddr.houseNumber || '',
+      street: draftAddr.street || '',
+      province: draftAddr.province || DEFAULT_PROVINCE,
+      futureWard: draftAddr.futureWard || null,
+      images: mergedImages,
+      level1_status: 'Mới',
+      statusLv1: 'Mới',
+      is_draft: true,
+      updatedAt: now,
+    };
+    try {
+      await axios.patch(`${API}/properties/${encodeURIComponent(mobileDraftProp.id)}`, payload);
+      await logAudit(`[Mobile F2] Cập nhật nháp ${mobileDraftProp.id}`, mobileDraftProp.id, {
+        actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_DRAFT_UPDATE,
+        property_id: mobileDraftProp.propertyCode || mobileDraftProp.id,
+      });
+      alert(`✅ Đã lưu nháp ${formatPropertyId(mobileDraftProp.propertyCode || mobileDraftProp.id)}.`);
+      closeMobileDraftModal();
+      fetchData();
+    } catch {
+      alert('Lỗi khi lưu nháp. Kiểm tra API.');
+    }
+    setMobileDraftSubmitting(false);
+  };
+
+  const handleMobileDraftSubmitForApproval = async () => {
+    if (!mobileDraftProp || !mobileDraftForm) return;
+    if (!mobileDraftBranch) {
+      alert('Vui lòng chọn nhánh gửi duyệt (1 / 2 / 3) — đồng bộ với Web F2.');
+      return;
+    }
+    const draftAddr = mobileDraftForm.addressFields || propertyToAddressFields(mobileDraftProp);
+    const imgCount = countMobileDraftImages(mobileDraftForm, mobileDraftExtraFiles);
+    const v = validatePropertySubmit({
+      address: draftAddr,
+      formData: mobileDraftForm,
+      imageCount: imgCount,
+      requireImages: true,
+    });
+    if (!v.ok) {
+      alert(v.message);
+      return;
+    }
+    const dupOk = await assertMobileDraftDupOk(draftAddr, mobileDraftForm.type, mobileDraftProp.id);
+    if (!dupOk) return;
+
+    setMobileDraftSubmitting(true);
+    let mergedImages;
+    try {
+      mergedImages = await resolveMobileDraftImages(mobileDraftProp.id, mobileDraftForm, mobileDraftExtraFiles);
+    } catch (err) {
+      alert(err?.message || 'Không xử lý được file ảnh.');
+      setMobileDraftSubmitting(false);
+      return;
+    }
+
+    let lv1Status = '';
+    if (mobileDraftBranch === 1) lv1Status = 'Chờ KH ký';
+    else if (mobileDraftBranch === 2) lv1Status = 'Chờ duyệt đảm bảo';
+    else if (mobileDraftBranch === 3) lv1Status = 'Chờ POS duyệt';
+
+    const now = new Date().toISOString();
+    const body = {
+      type: mobileDraftForm.type,
+      propertyType: mobileDraftForm.propertyType,
+      area: Number(String(mobileDraftForm.area).replace(/,/g, '')),
+      price: Number(String(mobileDraftForm.price).replace(/,/g, '')),
+      priceUnit: mobileDraftForm.priceUnit,
+      bedrooms: Number(mobileDraftForm.bedrooms) || 0,
+      bathrooms: Number(mobileDraftForm.bathrooms) || 0,
+      direction: mobileDraftForm.direction,
+      condition: mobileDraftForm.condition,
+      source: mobileDraftForm.source,
+      furniture: mobileDraftForm.furniture,
+      floor:
+        mobileDraftForm.floor === '' || mobileDraftForm.floor == null
+          ? null
+          : parseInt(String(mobileDraftForm.floor), 10),
+      legalStatus: mobileDraftForm.legalStatus,
+      description: mobileDraftForm.description,
+      address: buildFullAddress(draftAddr) || mobileDraftProp.address,
+      futureWard: draftAddr.futureWard || null,
+      district: draftAddr.district || '',
+      ward: draftAddr.ward || '',
+      houseNumber: draftAddr.houseNumber || '',
+      street: draftAddr.street || '',
+      province: draftAddr.province || DEFAULT_PROVINCE,
+      images: mergedImages,
+      statusLv1: lv1Status,
+      level1_status: lv1Status,
+      statusLv2: 'Chưa niêm yết',
+      level2_status: 'Chưa niêm yết',
+      is_draft: false,
+      updatedAt: now,
+      approval_branch: mobileDraftBranch,
+    };
+    if (mobileDraftBranch === 1) {
+      body.esign_sent_at = now;
+      body.esign_link_demo = `https://esign.ihouzz.demo/kh-ky/${Date.now()}`;
+    }
+
+    const savedId = mobileDraftProp.id;
+    const logAction =
+      mobileDraftBranch === 1
+        ? `[F2-Mobile] Nhánh 1 — Gửi link eSign KH, ${savedId} → Chờ KH ký`
+        : mobileDraftBranch === 2
+          ? `[F2-Mobile] Nhánh 2 — Gửi duyệt đảm bảo ${savedId}`
+          : `[F2-Mobile] Nhánh 3 — Gửi duyệt POS ${savedId}`;
+
+    try {
+      await axios.patch(`${API}/properties/${encodeURIComponent(savedId)}`, body);
+      await postEntityAudit({
+        action: logAction,
+        actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_MOBILE_SUBMIT_WAREHOUSE,
+        entityId: savedId,
+        property_id: savedId,
+        user: currentUserObj.name || 'Đầu chủ (Mobile)',
+        user_id: USER_ID,
+        extra: { mobileDraftBranch },
+      });
+      if (mobileDraftBranch === 1) {
+        await axios.post(`${API}/notifications`, {
+          propertyId: savedId,
+          recipient: 'Khách hàng (demo)',
+          message: `[Demo eSign] Link ký HĐMG đã gửi qua Zalo OA / Email cho ${formatPropertyId(savedId)}.`,
+          type: 'info',
+          createdAt: now,
+          isRead: false,
+        });
+      } else if (mobileDraftBranch === 2 || mobileDraftBranch === 3) {
+        await axios.post(`${API}/notifications`, {
+          propertyId: savedId,
+          recipient: currentUserObj.pos_name ? 'GĐ POS' : 'Giám đốc POS',
+          message:
+            mobileDraftBranch === 2
+              ? `Tài sản ${formatPropertyId(savedId)} chờ phê duyệt Kho Đảm bảo.`
+              : `Tài sản ${formatPropertyId(savedId)} chờ phê duyệt nhập Kho Chuẩn (HĐMG đã ký).`,
+          type: 'info',
+          createdAt: now,
+          isRead: false,
+        });
+      }
+      const code = formatPropertyId(savedId);
+      if (mobileDraftBranch === 1) {
+        alert(`✅ ${code} — Đã gửi link ký KH (Chờ KH ký). Xác nhận sau khi KH ký, rồi Gửi duyệt POS.`);
+      } else if (mobileDraftBranch === 2) {
+        alert(`✅ ${code} — Đã gửi «Chờ duyệt đảm bảo».`);
+      } else {
+        alert(`✅ ${code} — Đã gửi «Chờ POS duyệt».`);
+      }
+      closeMobileDraftModal();
+      fetchData();
+    } catch (e) {
+      console.error(e);
+      alert('Lỗi khi gửi duyệt. Kiểm tra API.');
+    }
+    setMobileDraftSubmitting(false);
+  };
+
+  const handleMobileConfirmKhSigned = async (row) => {
+    if (!row) return;
+    const code = formatPropertyId(row.propertyCode || row.id);
+    if (!window.confirm(`Xác nhận Khách hàng đã ký HĐMG cho ${code}?`)) return;
+    const t = new Date().toISOString();
+    try {
+      await axios.patch(`${API}/properties/${encodeURIComponent(row.id)}`, {
+        level1_status: 'KH đã ký',
+        statusLv1: 'KH đã ký',
+        kh_signed_at: t,
+        updatedAt: t,
+      });
+      await postEntityAudit({
+        action: `[F2-Mobile] Xác nhận KH đã ký ${code}`,
+        actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_MOBILE_ESIGN_CONFIRMED,
+        entityId: row.id,
+        property_id: row.propertyCode || row.id,
+        user: currentUserObj.name || 'Đầu chủ (Mobile)',
+        user_id: USER_ID,
+        old_status: row.level1_status || row.statusLv1,
+        new_status: 'KH đã ký',
+      });
+      fetchData();
+      alert(`✅ ${code}: trạng thái «KH đã ký». Bạn có thể bấm «Gửi duyệt POS».`);
+    } catch {
+      alert('Lỗi cập nhật trạng thái.');
+    }
+  };
+
+  const handleMobileSendEsignToPos = async (row) => {
+    if (!row) return;
+    if (row.level1_status !== 'KH đã ký' && row.statusLv1 !== 'KH đã ký') {
+      alert('Chỉ gửi POS sau khi trạng thái là «KH đã ký».');
+      return;
+    }
+    const t = new Date().toISOString();
+    const code = formatPropertyId(row.propertyCode || row.id);
+    try {
+      await axios.patch(`${API}/properties/${encodeURIComponent(row.id)}`, {
+        level1_status: 'Chờ POS duyệt',
+        statusLv1: 'Chờ POS duyệt',
+        submitted_to_pos_at: t,
+        updatedAt: t,
+      });
+      await postEntityAudit({
+        action: `[F2-Mobile] Gửi duyệt POS ${code}`,
+        actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_MOBILE_SEND_POS_ESIGN,
+        entityId: row.id,
+        property_id: row.propertyCode || row.id,
+        user: currentUserObj.name || 'Đầu chủ (Mobile)',
+        user_id: USER_ID,
+        old_status: 'KH đã ký',
+        new_status: 'Chờ POS duyệt',
+      });
+      await axios.post(`${API}/notifications`, {
+        propertyId: row.propertyCode || row.id,
+        recipient: currentUserObj.pos_name ? 'GĐ POS' : 'Giám đốc POS',
+        message: `Tài sản ${code} (KH đã ký HĐMG) chờ phê duyệt nhập kho.`,
+        type: 'info',
+        createdAt: t,
+        isRead: false,
+      });
+      fetchData();
+      alert(`✅ Đã gửi ${code} tới Giám đốc POS (Chờ POS duyệt).`);
+    } catch {
+      alert('Lỗi khi gửi duyệt POS.');
+    }
+  };
+
   const statusBadge = (lv1, lv2) => {
     const colorMap = {
+      Mới: 'warning',
       'Chờ POS duyệt': 'warning',
       'Chờ duyệt đảm bảo': 'warning',
       'Được duyệt': 'success',
@@ -925,6 +1429,7 @@ function SalesMobile() {
       'Bị từ chối': 'danger',
       'Từ chối': 'danger',
       'Chờ KH ký': 'info',
+      'KH đã ký': 'info',
       'Đã gỡ nguồn': 'secondary',
       'Chờ duyệt gỡ nguồn': 'danger',
     };
@@ -948,7 +1453,7 @@ function SalesMobile() {
           <h5 className="fw-bold m-0"><i className="bi bi-phone-fill text-primary me-2"></i>App Đầu Chủ</h5>
           <small className="text-muted">iHouzz Internal System</small>
         </div>
-        <span className="badge bg-primary">F2 · F4 · F6 · F8</span>
+        <span className="badge bg-primary">Đầu chủ · Mobile</span>
       </div>
 
       {/* Tab bar */}
@@ -960,7 +1465,7 @@ function SalesMobile() {
         <button className={`btn ${activeTab === 'myprops' ? 'btn-primary' : 'btn-outline-primary'}`}
           onClick={() => { setActiveTab('myprops'); fetchData(); }}>
           <i className="bi bi-building me-1"></i>Tài sản của tôi
-          <span className="badge bg-white text-primary ms-2">{myPropsListBase.length}</span>
+          <span className="badge bg-white text-primary ms-2">{myPropsDisplayed.length}</span>
         </button>
       </div>
 
@@ -1004,7 +1509,7 @@ function SalesMobile() {
               <select className="form-select form-select-sm" value={formData.propertyType}
                 onChange={e => setFormData({ ...formData, propertyType: e.target.value })}>
                 <option>Căn hộ chung cư</option><option>Nhà phố</option>
-                <option>Đất nền</option><option>Biệt thự</option><option>Shophouse</option>
+                <option>Đất nền</option><option>Biệt thự</option><option>Shophouse</option><option>Văn phòng</option>
               </select>
             </div>
             <div className="mb-2">
@@ -1321,28 +1826,74 @@ function SalesMobile() {
         <div>
           <div className="d-flex justify-content-between align-items-center mb-3">
             <h6 className="fw-bold m-0">Tài sản của tôi</h6>
-            <button className="btn btn-sm btn-outline-primary" onClick={fetchData}>
+            <button className="btn btn-sm btn-outline-primary" onClick={fetchData} title="Đồng bộ với web / máy chủ">
               <i className="bi bi-arrow-clockwise"></i>
             </button>
           </div>
+          {!USER_ID && (
+            <div className="alert alert-warning small py-2 mb-3">
+              <i className="bi bi-person-lock me-1"></i>
+              Chưa có phiên đăng nhập (thiếu <code>user.id</code> trong <code>localStorage</code>). Hãy đăng nhập trên phiên bản web (OTP mặc định <strong>111111</strong>), rồi quay lại đây hoặc bấm làm mới — dữ liệu đồng bộ với cùng tài khoản.
+            </div>
+          )}
+          {fetchError && (
+            <div className="alert alert-danger small py-2 mb-3">
+              <i className="bi bi-wifi-off me-1"></i>{fetchError}
+            </div>
+          )}
+          {USER_ID && (
+            <div className="form-text small text-muted mb-2">
+              Đồng bộ: tab khác / đăng nhập web, khi mở lại tab điện thoại, hoặc tự làm mới khoảng 28 giây khi đang ở tab này.
+            </div>
+          )}
           <div className="mb-3">
-            <label className="form-label small text-muted mb-1">Tìm kiếm</label>
+            <label className="form-label small text-muted mb-1">Tìm kiếm theo ký tự</label>
             <div className="input-group input-group-sm">
               <span className="input-group-text"><i className="bi bi-search"></i></span>
               <input
                 type="search"
                 className="form-control"
-                placeholder="Mã, địa chỉ, loại, trạng thái, POS, giá, mô tả…"
+                placeholder="Mã LS, địa chỉ, loại BĐS, bán/thuê, giá, kho, trạng thái…"
                 value={myPropsSearch}
                 onChange={(e) => setMyPropsSearch(e.target.value)}
                 autoComplete="off"
               />
             </div>
-            {myPropsSearch.trim() && (
-              <div className="form-text small">
-                Hiển thị {myPropsList.length} / {myPropsListBase.length} tài sản
-              </div>
-            )}
+            <div className="mt-2">
+              <label className="form-label small text-muted mb-1">Lọc trạng thái</label>
+              <select
+                className="form-select form-select-sm"
+                value={myPropsStatusFilter}
+                onChange={(e) => setMyPropsStatusFilter(e.target.value)}
+              >
+                {MY_PROPS_STATUS_OPTIONS.map((o) => (
+                  <option key={o.value === MY_PROPS_STATUS_ALL ? '__all' : o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-check mt-2">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                id="mobMyPropsShowRemoved"
+                checked={includeRemovedMyProps}
+                onChange={(e) => setIncludeRemovedMyProps(e.target.checked)}
+              />
+              <label className="form-check-label small" htmlFor="mobMyPropsShowRemoved">
+                Hiển thị tài sản <strong className="text-danger">Đã gỡ nguồn</strong> (mặc định ẩn — đồng bộ Web F2)
+              </label>
+            </div>
+            <div className="small text-muted mt-2">
+              Hiển thị <strong>{myPropsDisplayed.length}</strong> / {myPropsListBase.length} tài sản
+              {!includeRemovedMyProps && (
+                <span>
+                  {' '}
+                  · Đang ẩn <strong>Đã gỡ nguồn</strong>
+                </span>
+              )}
+            </div>
           </div>
 
           {myRejectedMktListings.length > 0 && (
@@ -1352,7 +1903,7 @@ function SalesMobile() {
               </h6>
               {myRejectedMktListings.map((l) => (
                 <div key={l.id} className="border rounded p-2 mb-2 small bg-light">
-                  <div className="fw-bold text-primary">{formatListingId(l.id)}</div>
+                  <div className="fw-bold text-primary">{formatListingId(l.listingCode || l.id)}</div>
                   <div className="text-muted text-truncate">{l.title}</div>
                   {(l.rejection_note || l.prev_rejection_note) && (
                     <div className="text-danger small mt-1">
@@ -1371,11 +1922,13 @@ function SalesMobile() {
             </div>
           )}
 
-          {myPropsListBase.length === 0 && <div className="text-center text-muted py-5">Chưa có tài sản nào</div>}
-          {myPropsListBase.length > 0 && myPropsList.length === 0 && (
-            <div className="text-center text-muted py-4">Không có tài sản khớp tìm kiếm.</div>
+          {USER_ID && myPropsListBase.length === 0 && !fetchError && (
+            <div className="text-center text-muted py-5">Chưa có tài sản nào</div>
           )}
-          {myPropsList
+          {USER_ID && myPropsListBase.length > 0 && myPropsDisplayed.length === 0 && (
+            <div className="text-center text-muted py-4">Không có tài sản khớp bộ lọc / tìm kiếm.</div>
+          )}
+          {myPropsDisplayed
             .slice()
             .reverse()
             .map((p) => {
@@ -1384,7 +1937,7 @@ function SalesMobile() {
               return (
                 <div key={p.id} className="card shadow-sm border-0 mb-3 p-3">
                   <div className="d-flex justify-content-between mb-2">
-                    <span className="fw-bold text-primary">{p.propertyCode || p.id}</span>
+                    <span className="fw-bold text-primary">{formatPropertyId(p.propertyCode || p.id)}</span>
                     {statusBadge(lv1, lv2)}
                   </div>
                   <div className="small text-muted mb-1">{p.address}</div>
@@ -1393,9 +1946,20 @@ function SalesMobile() {
                       <i className="bi bi-map me-1"></i>P.mới: {p.futureWard}
                     </div>
                   )}
+                  <div className="small text-muted mb-1">
+                    <span className="text-dark fw-semibold">Loại BĐS:</span> {p.propertyType || '—'}
+                  </div>
+                  <div className="small text-muted mb-1">
+                    <span className="text-dark fw-semibold">Loại GD:</span> {p.type || '—'}
+                  </div>
+                  <div className="small text-muted mb-1">
+                    <span className="text-dark fw-semibold">Giá:</span> {formatMyPropsPriceDisplay(p)}
+                  </div>
+                  <div className="small text-muted mb-1">
+                    <span className="text-dark fw-semibold">Kho:</span> {warehouseLabel(p)}
+                  </div>
                   <div className="small text-muted mb-2">
-                    {p.propertyType} • {Number(p.area).toLocaleString('en-US')}m² • {Number(p.price).toLocaleString('en-US')}{' '}
-                    {p.priceUnit || 'VNĐ'}
+                    {Number(p.area || 0).toLocaleString('en-US')} m²
                   </div>
                   {p.update_request_status === UPDATE_REQUEST_PENDING && (
                     <div className="alert alert-info py-2 small mb-2">
@@ -1409,7 +1973,34 @@ function SalesMobile() {
                   )}
 
                   <div className="d-flex flex-column gap-2">
-                    {lv1 === 'Bị từ chối' && p.createdBy_id === USER_ID && (
+                    {lv1 === 'Mới' && sameUserId(p.createdBy_id, USER_ID) && (
+                      <button
+                        type="button"
+                        className="btn btn-warning btn-sm text-dark fw-bold"
+                        onClick={() => openMobileDraftModal(p)}
+                      >
+                        <i className="bi bi-pencil-square me-1"></i>Hoàn thiện hồ sơ nháp
+                      </button>
+                    )}
+                    {lv1 === 'Chờ KH ký' && sameUserId(p.createdBy_id, USER_ID) && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm fw-bold"
+                        onClick={() => handleMobileConfirmKhSigned(p)}
+                      >
+                        <i className="bi bi-check2-circle me-1"></i>Xác nhận KH đã ký
+                      </button>
+                    )}
+                    {lv1 === 'KH đã ký' && sameUserId(p.createdBy_id, USER_ID) && (
+                      <button
+                        type="button"
+                        className="btn btn-success btn-sm fw-bold"
+                        onClick={() => handleMobileSendEsignToPos(p)}
+                      >
+                        <i className="bi bi-send-check me-1"></i>Gửi duyệt POS
+                      </button>
+                    )}
+                    {lv1 === 'Bị từ chối' && sameUserId(p.createdBy_id, USER_ID) && (
                       <button type="button" className="btn btn-warning btn-sm text-dark fw-bold" onClick={() => openRejectedEdit(p)}>
                         <i className="bi bi-pencil-square me-1"></i>Chỉnh sửa &amp; gửi duyệt lại
                       </button>
@@ -1454,7 +2045,7 @@ function SalesMobile() {
                     )}
                     {lv1 === 'Được duyệt' && lv2 !== 'Đang niêm yết' && lv2 !== 'Chờ MKT duyệt' && (
                       <button className="btn btn-outline-danger btn-sm" onClick={() => handleRemoveSource(p)}>
-                        <i className="bi bi-x-octagon me-1"></i>Yêu cầu Gỡ Nguồn (F8 · BR-010)
+                        <i className="bi bi-x-octagon me-1"></i>Yêu cầu gỡ nguồn
                       </button>
                     )}
                   </div>
@@ -1469,7 +2060,7 @@ function SalesMobile() {
           <div className="modal-dialog modal-dialog-scrollable modal-fullscreen-sm-down">
             <div className="modal-content">
               <div className="modal-header py-2 bg-primary text-white">
-                <h6 className="modal-title fw-bold m-0">Cập nhật tài sản — {upTarget.id}</h6>
+                <h6 className="modal-title fw-bold m-0">Cập nhật tài sản — {formatPropertyId(upTarget.propertyCode || upTarget.id)}</h6>
                 <button type="button" className="btn-close btn-close-white" onClick={() => { setUpTarget(null); setUpForm(null); setUpExtraFiles([]); }} />
               </div>
               <div className="modal-body small">
@@ -1799,6 +2390,325 @@ function SalesMobile() {
           listing={mktResubmitCtx.listing}
           extraImageUrls={mktPreviewImageUrls}
         />
+      )}
+
+      {mobileDraftProp && mobileDraftForm && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.65)', zIndex: 2100 }}>
+          <div className="modal-dialog modal-dialog-scrollable">
+            <div className="modal-content border-0 shadow">
+              <div className="modal-header text-white py-2" style={{ background: 'linear-gradient(90deg,#f59e0b,#d97706)' }}>
+                <h6 className="modal-title fw-bold m-0">
+                  <i className="bi bi-pencil-square me-1"></i>
+                  Hoàn thiện nháp — {formatPropertyId(mobileDraftProp.propertyCode || mobileDraftProp.id)}
+                </h6>
+                <button type="button" className="btn-close btn-close-white" onClick={closeMobileDraftModal} aria-label="Đóng" />
+              </div>
+              <div className="modal-body small">
+                <div className="alert alert-warning py-2 mb-2">
+                  <strong>Nháp (Mới)</strong> — Đủ Quận, Phường, Số nhà, Đường, diện tích, giá, <strong>ít nhất 1 ảnh</strong> trước khi Gửi duyệt. Loại <strong>Bán</strong>: kiểm tra trùng địa chỉ (đồng bộ Web F2).
+                </div>
+                <label className="form-label fw-semibold">
+                  Địa chỉ (Quận, Phường, Số nhà, Đường) <span className="text-danger">*</span>
+                </label>
+                <SmartAddress
+                  compact
+                  value={mobileDraftForm.addressFields}
+                  onChange={(addressFields) => {
+                    setMobileDraftForm({ ...mobileDraftForm, addressFields });
+                  }}
+                />
+                <div className="text-muted small mb-2 mt-1">
+                  {buildFullAddress(mobileDraftForm.addressFields) || 'Chưa đủ thành phần địa chỉ'}
+                </div>
+                <div className="row g-2 mb-2">
+                  <div className="col-6">
+                    <label className="form-label">Loại GD</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={mobileDraftForm.type}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, type: e.target.value })}
+                    >
+                      <option>Bán</option>
+                      <option>Thuê</option>
+                    </select>
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">Loại BĐS</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={mobileDraftForm.propertyType}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, propertyType: e.target.value })}
+                    >
+                      <option>Căn hộ chung cư</option>
+                      <option>Nhà phố</option>
+                      <option>Đất nền</option>
+                      <option>Biệt thự</option>
+                      <option>Shophouse</option>
+                      <option>Văn phòng</option>
+                    </select>
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">
+                      Diện tích (m²) <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      className="form-control form-control-sm"
+                      min={1}
+                      value={mobileDraftForm.area}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, area: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">
+                      Giá <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={mobileDraftForm.price}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, price: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label">Đơn vị giá</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={mobileDraftForm.priceUnit}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, priceUnit: e.target.value })}
+                    >
+                      <option value="tỷ VNĐ">tỷ VNĐ</option>
+                      <option value="triệu VNĐ">triệu VNĐ</option>
+                      <option value="VNĐ">VNĐ</option>
+                      <option value="VNĐ/tháng">VNĐ/tháng</option>
+                      <option value="triệu VNĐ/tháng">triệu VNĐ/tháng</option>
+                    </select>
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">Phòng ngủ</label>
+                    <input
+                      type="number"
+                      className="form-control form-control-sm"
+                      min={0}
+                      value={mobileDraftForm.bedrooms}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, bedrooms: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">Phòng tắm</label>
+                    <input
+                      type="number"
+                      className="form-control form-control-sm"
+                      min={0}
+                      value={mobileDraftForm.bathrooms}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, bathrooms: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label">Tầng</label>
+                    <input
+                      type="number"
+                      className="form-control form-control-sm"
+                      value={mobileDraftForm.floor}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, floor: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">Hướng</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={mobileDraftForm.direction}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, direction: e.target.value })}
+                    >
+                      <option value="">— Chọn —</option>
+                      <option>Đông</option>
+                      <option>Tây</option>
+                      <option>Nam</option>
+                      <option>Bắc</option>
+                      <option>Đông Nam</option>
+                      <option>Đông Bắc</option>
+                      <option>Tây Nam</option>
+                      <option>Tây Bắc</option>
+                    </select>
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">Tình trạng</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={mobileDraftForm.condition}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, condition: e.target.value })}
+                    >
+                      <option value="">— Chọn —</option>
+                      <option>Nhà mới</option>
+                      <option>Đang sử dụng</option>
+                      <option>Cần cải tạo</option>
+                    </select>
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">Nội thất</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={mobileDraftForm.furniture}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, furniture: e.target.value })}
+                    >
+                      <option value="">— Chọn —</option>
+                      <option>Đầy đủ</option>
+                      <option>Cơ bản</option>
+                      <option>Nhà trống</option>
+                    </select>
+                  </div>
+                  <div className="col-6">
+                    <label className="form-label">Nguồn hàng</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={mobileDraftForm.source}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, source: e.target.value })}
+                    >
+                      <option value="">— Chọn —</option>
+                      <option>Chuyển nhượng</option>
+                      <option>Dự án</option>
+                      <option>Cá nhân</option>
+                    </select>
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label">Pháp lý</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={mobileDraftForm.legalStatus}
+                      onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, legalStatus: e.target.value })}
+                    >
+                      <option>Sổ đỏ</option>
+                      <option>Sổ hồng riêng</option>
+                      <option>Hợp đồng mua bán</option>
+                      <option>Đang chờ sổ</option>
+                    </select>
+                  </div>
+                </div>
+                <label className="form-label fw-semibold">Mô tả thêm</label>
+                <textarea
+                  className="form-control form-control-sm mb-2"
+                  rows={3}
+                  maxLength={500}
+                  value={mobileDraftForm.description}
+                  onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, description: e.target.value })}
+                  placeholder="Mô tả thêm về tài sản (vị trí, ưu điểm…)"
+                />
+                <div className="form-text text-end small text-muted mb-2">
+                  {(mobileDraftForm.description || '').length}/500 ký tự
+                </div>
+                <label className="form-label fw-semibold">
+                  Ảnh minh họa tài sản <span className="text-danger">*</span>
+                </label>
+                <p className="small text-danger mb-1">
+                  Bắt buộc ít nhất <strong>1 ảnh</strong> (JPG/PNG/WebP, tối đa 10MB/file) trước khi Gửi duyệt.
+                  {countMobileDraftImages(mobileDraftForm, mobileDraftExtraFiles) > 0 && (
+                    <span className="text-success ms-1">
+                      Đã có {countMobileDraftImages(mobileDraftForm, mobileDraftExtraFiles)} ảnh.
+                    </span>
+                  )}
+                </p>
+                {(mobileDraftForm.images || []).length > 0 && (
+                  <div className="d-flex flex-wrap gap-1 mb-2">
+                    {(mobileDraftForm.images || []).map((url, i) => (
+                      <div key={`mob-d-img-${i}`} className="position-relative">
+                        <img src={url} alt="" className="rounded border" style={{ width: 64, height: 48, objectFit: 'cover' }} />
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-danger position-absolute top-0 end-0 p-0 lh-1"
+                          style={{ fontSize: 9, transform: 'translate(20%,-20%)' }}
+                          onClick={() =>
+                            setMobileDraftForm({
+                              ...mobileDraftForm,
+                              images: (mobileDraftForm.images || []).filter((_, j) => j !== i),
+                            })
+                          }
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {mobileDraftExtraFiles.length > 0 && (
+                  <ul className="list-unstyled small text-muted mb-2">
+                    {mobileDraftExtraFiles.map((f, i) => (
+                      <li key={`${f.name}-${i}`} className="d-flex justify-content-between">
+                        <span className="text-truncate">{f.name}</span>
+                        <button
+                          type="button"
+                          className="btn btn-link btn-sm p-0 text-danger"
+                          onClick={() => setMobileDraftExtraFiles((prev) => prev.filter((_, j) => j !== i))}
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="border border-dashed rounded p-2 text-center bg-light position-relative mb-3">
+                  <input
+                    type="file"
+                    multiple
+                    accept=".jpg,.jpeg,.png,.webp,image/*"
+                    className="position-absolute w-100 h-100 opacity-0 top-0 start-0"
+                    style={{ cursor: 'pointer' }}
+                    onChange={handleMobileDraftFileChange}
+                  />
+                  <i className="bi bi-cloud-arrow-up text-primary" />
+                  <div className="small fw-semibold">Thêm ảnh — click hoặc kéo thả</div>
+                  <small className="text-muted">JPG, PNG, WebP · tối đa 10MB/file</small>
+                </div>
+                <div className="fw-semibold mb-1">Nhánh gửi duyệt (bắt buộc)</div>
+                <div className="d-grid gap-1 mb-1">
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${mobileDraftBranch === 1 ? 'btn-primary' : 'btn-outline-primary'}`}
+                    onClick={() => setMobileDraftBranch(1)}
+                  >
+                    1 — Gửi KH ký online (eSign) → Chờ KH ký
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${mobileDraftBranch === 2 ? 'btn-warning' : 'btn-outline-warning'} text-dark`}
+                    onClick={() => setMobileDraftBranch(2)}
+                  >
+                    2 — Gửi duyệt Kho đảm bảo
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${mobileDraftBranch === 3 ? 'btn-success' : 'btn-outline-success'}`}
+                    onClick={() => setMobileDraftBranch(3)}
+                  >
+                    3 — Đã ký / Gửi duyệt POS
+                  </button>
+                </div>
+              </div>
+              <div className="modal-footer py-2 flex-wrap gap-1">
+                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={closeMobileDraftModal} disabled={mobileDraftSubmitting}>
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline-warning btn-sm"
+                  disabled={mobileDraftSubmitting}
+                  onClick={handleMobileDraftSaveOnly}
+                >
+                  {mobileDraftSubmitting ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-floppy me-1"></i>}
+                  Lưu nháp
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-success btn-sm fw-bold"
+                  disabled={mobileDraftSubmitting}
+                  onClick={handleMobileDraftSubmitForApproval}
+                >
+                  {mobileDraftSubmitting ? <span className="spinner-border spinner-border-sm me-1" /> : <i className="bi bi-send-check me-1"></i>}
+                  Gửi duyệt
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {reopenRejected && (

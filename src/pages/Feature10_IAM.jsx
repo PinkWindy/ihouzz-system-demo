@@ -1,14 +1,68 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ALL_PERMISSIONS, getPermissions, savePermissions,
-  resetPermissions, hasPermission
+  resetPermissions, hasPermission,
 } from '../utils/permissions.js';
-const API = 'http://localhost:5000';
+import { nextUserIdFromList, normalizeUserId, sameUserId } from '../utils/userId.js';
+import {
+  postEntityAudit,
+  AUDIT_ACTION_TYPE,
+  readSessionUser,
+  accountAuditEntityId,
+  API,
+  SESSION_CHANGED_EVENT,
+} from '../utils/listingWorkflow.js';
+
+/** json-server / proxy có thể trả `{ data: [...] }` thay vì mảng thuần — đồng bộ F7/F9. */
+function normalizeJsonList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+/** Shape hiển thị F10 (POS mặc định khi trống — giữ tương thích UI cũ). */
+function f10AuthFromUser(u) {
+  if (!u || u.role === 'guest') {
+    let pn = '';
+    try {
+      pn = localStorage.getItem('pos_name') || '';
+    } catch {
+      /* ignore */
+    }
+    return { role: 'guest', pos_name: pn || 'POS Chi Nhánh 1', name: '' };
+  }
+  let posExtra = '';
+  try {
+    posExtra = localStorage.getItem('pos_name') || '';
+  } catch {
+    /* ignore */
+  }
+  const posName =
+    u.pos_name != null && String(u.pos_name).trim() !== ''
+      ? String(u.pos_name)
+      : (posExtra || 'POS Chi Nhánh 1');
+  return { role: u.role || 'sales', pos_name: posName, name: u.name || '' };
+}
 
 const ROLES = ['admin', 'pos_manager', 'sales', 'marketing'];
 const ROLE_LABEL = { admin: 'Admin Tổng', pos_manager: 'Giám đốc POS', sales: 'Chuyên viên Đầu chủ', marketing: 'Chuyên viên MKT' };
 const ROLE_COLOR = { admin: 'danger', pos_manager: 'warning', sales: 'primary', marketing: 'info' };
 const STATUS_COLOR = { active: 'success', locked: 'warning', pending: 'info', inactive: 'danger' };
+
+function statusBadgeClass(bgKey) {
+  const k = bgKey || 'secondary';
+  if (k === 'light') return 'badge bg-light text-dark border';
+  if (k === 'warning') return 'badge bg-warning text-dark';
+  return `badge bg-${k}`;
+}
+
+function roleBadgeClass(role) {
+  return statusBadgeClass(ROLE_COLOR[role] || 'secondary');
+}
+
+function userStatusBadgeClass(status) {
+  return statusBadgeClass(STATUS_COLOR[status] || 'secondary');
+}
 
 function Toast({ toast }) {
   if (!toast) return null;
@@ -21,17 +75,39 @@ function Toast({ toast }) {
 }
 
 export default function Feature10_IAM() {
-  const userStr = localStorage.getItem('user');
-  const userObj = userStr ? JSON.parse(userStr) : {};
-  const rawRole = userObj.role || localStorage.getItem('user_role') || 'guest';
-  const ROLE = rawRole === 'pos' ? 'pos_manager' : rawRole === 'mkt' ? 'marketing' : rawRole;
-  const POS_NAME = userObj.pos_name || localStorage.getItem('pos_name') || 'POS Chi Nhánh 1';
+  const [user, setUser] = useState(() => readSessionUser());
+  const [permRev, setPermRev] = useState(0);
+  const auth = useMemo(() => f10AuthFromUser(user), [user]);
+  const { role: ROLE, pos_name: POS_NAME, name: actorName } = auth;
+
+  useEffect(() => {
+    const bumpUser = () => setUser(readSessionUser());
+    const onStorage = (e) => {
+      bumpUser();
+      if (!e.key || e.key === 'ihouzz_permissions' || e.key === 'user_role' || e.key === 'pos_name' || e.key === 'user') {
+        setPermRev((n) => n + 1);
+      }
+    };
+    const onSession = () => {
+      bumpUser();
+      setPermRev((n) => n + 1);
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(SESSION_CHANGED_EVENT, onSession);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(SESSION_CHANGED_EVENT, onSession);
+    };
+  }, []);
 
   const [users, setUsers] = useState([]);
   const [posList, setPosList] = useState([]);
   const [tab, setTab] = useState('users'); // 'users' | 'pos' | 'perms'
   const [permMatrix, setPermMatrix] = useState(() => getPermissions());
   const [permSaved, setPermSaved] = useState(false);
+  useEffect(() => {
+    setPermMatrix(getPermissions());
+  }, [user, permRev]);
   const [selected, setSelected] = useState(null);
   const [modalMode, setModalMode] = useState(null); // 'lock'|'unlock'|'create'|'pos_detail'|'edit'|'create_pos'|'edit_pos'|'inactive_user'
   const [lockReason, setLockReason] = useState('');
@@ -42,7 +118,23 @@ export default function Feature10_IAM() {
   const [newPos, setNewPos] = useState({ name: '', manager_id: '', manager_name: '', manager_user: null });
   const [editPos, setEditPos] = useState(null);
 
-  useEffect(() => { loadAll(); }, []);
+  const loadAll = useCallback(async () => {
+    try {
+      const [uRaw, pRaw] = await Promise.all([
+        fetch(`${API}/users`).then((r) => r.json()),
+        fetch(`${API}/pos`).then((r) => r.json()).catch(() => []),
+      ]);
+      setUsers(normalizeJsonList(uRaw));
+      setPosList(normalizeJsonList(pRaw));
+    } catch {
+      setUsers([]);
+      setPosList([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
 
   const resolvePosIdFromName = (posName) => {
     if (!posName || !Array.isArray(posList)) return null;
@@ -52,24 +144,21 @@ export default function Feature10_IAM() {
     return Number.isNaN(n) ? null : n;
   };
 
-  const loadAll = async () => {
-    const [u, pList] = await Promise.all([
-      fetch(`${API}/users`).then(r => r.json()),
-      fetch(`${API}/pos`).then(r => r.json()).catch(() => []),
-    ]);
-    setUsers(u);
-    setPosList(pList);
-  };
-
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4500);
   };
 
-  const postLog = (action, entityId) => fetch(`${API}/logs`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ timestamp: new Date().toISOString(), action, entityId, user: 'Admin (F10)' }),
-  });
+  const postLog = async (action, entityId, actionType, extra = {}) => {
+    await postEntityAudit({
+      action,
+      entityId,
+      actionType,
+      user: user.name || actorName || 'Admin (F10)',
+      user_id: user.id ?? '',
+      ...extra,
+    });
+  };
 
   const handleLock = async () => {
     if (lockReason.trim().length < 10) { showToast('Lý do khóa phải từ 10 ký tự trở lên!', 'danger'); return; }
@@ -78,7 +167,11 @@ export default function Feature10_IAM() {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'locked', lockReason: lockReason.trim(), lockedAt: new Date().toISOString(), lockedBy: 'Admin Demo' }),
     });
-    await postLog(`[F10] Khóa tài khoản · Lý do: ${lockReason.trim()}`, selected.id);
+    await postLog(`[F10] Khóa tài khoản · Lý do: ${lockReason.trim()}`, selected.id, AUDIT_ACTION_TYPE.IAM_USER_LOCK, {
+      reason: lockReason.trim(),
+      old_status: selected.status,
+      new_status: 'locked',
+    });
     showToast(`🔒 Đã khóa tài khoản "${selected.name}".`);
     setSelected(null); setModalMode(null); setLockReason('');
     setSubmitting(false); loadAll();
@@ -90,7 +183,10 @@ export default function Feature10_IAM() {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'active', lockReason: null, lockedAt: null, lockedBy: null, unlockedAt: new Date().toISOString() }),
     });
-    await postLog(`[F10] Mở khóa/Phục hồi tài khoản`, selected.id);
+    await postLog(`[F10] Mở khóa/Phục hồi tài khoản`, selected.id, AUDIT_ACTION_TYPE.IAM_USER_UNLOCK, {
+      old_status: 'locked',
+      new_status: 'active',
+    });
     showToast(`🔓 Đã mở khóa tài khoản "${selected.name}".`, 'success');
     setSelected(null); setModalMode(null);
     setSubmitting(false); loadAll();
@@ -102,7 +198,10 @@ export default function Feature10_IAM() {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'inactive', inactiveAt: new Date().toISOString() }),
     });
-    await postLog(`[F10] Báo nghỉ việc nhân sự`, selected.id);
+    await postLog(`[F10] Báo nghỉ việc nhân sự`, selected.id, AUDIT_ACTION_TYPE.IAM_USER_INACTIVE, {
+      old_status: selected.status,
+      new_status: 'inactive',
+    });
     showToast(`⚠️ Đã cập nhật tài khoản "${selected.name}" thành Nghỉ việc.`, 'warning');
     setSelected(null); setModalMode(null);
     setSubmitting(false); loadAll();
@@ -113,7 +212,9 @@ export default function Feature10_IAM() {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'active', activatedAt: new Date().toISOString() }),
     });
-    await postLog(`[F10] Kích hoạt tài khoản`, u.id);
+    await postLog(`[F10] Kích hoạt tài khoản`, u.id, AUDIT_ACTION_TYPE.IAM_USER_ACTIVATE, {
+      new_status: 'active',
+    });
     showToast(`✅ Đã kích hoạt tài khoản "${u.name}".`);
     loadAll();
   };
@@ -121,7 +222,7 @@ export default function Feature10_IAM() {
   const handleCreateUser = async () => {
     if (!newUser.name.trim() || !newUser.role) { showToast('Vui lòng điền tên và vai trò!', 'danger'); return; }
     setSubmitting(true);
-    const id = `u${Date.now()}`;
+    const id = nextUserIdFromList(users);
     const pos_id = resolvePosIdFromName(newUser.pos_name);
     await fetch(`${API}/users`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -133,7 +234,10 @@ export default function Feature10_IAM() {
         createdAt: new Date().toISOString(),
       }),
     });
-    await postLog(`[F10] Tạo tài khoản mới: ${newUser.name} (${newUser.role})`, id);
+    await postLog(`[F10] Tạo tài khoản mới: ${newUser.name} (${newUser.role})`, id, AUDIT_ACTION_TYPE.IAM_USER_CREATE, {
+      new_status: 'pending',
+      detail: `${newUser.name} · ${newUser.role}`,
+    });
     showToast(`✅ Đã tạo tài khoản "${newUser.name}". Trạng thái: Chờ kích hoạt.`);
     setNewUser({ name: '', role: 'sales', pos_name: '', email: '', phone: '' });
     setModalMode(null); setSubmitting(false); loadAll();
@@ -154,9 +258,53 @@ export default function Feature10_IAM() {
         phone: editUser.phone,
       }),
     });
-    await postLog(`[F10] Cập nhật tài khoản: ${editUser.name} (${editUser.role})`, editUser.id);
+    await postLog(`[F10] Cập nhật tài khoản: ${editUser.name} (${editUser.role})`, editUser.id, AUDIT_ACTION_TYPE.IAM_USER_UPDATE);
     showToast(`✅ Đã cập nhật tài khoản "${editUser.name}".`);
     setModalMode(null); setEditUser(null); setSubmitting(false); loadAll();
+  };
+
+  const handleAdminResetPasswordDemo = async () => {
+    if (!editUser?.id) return;
+    const emailT = String(editUser.email || '').trim();
+    if (!emailT) {
+      showToast('Cần email nhân viên để ghi audit ACCOUNT:<email>.', 'danger');
+      return;
+    }
+    if (
+      !window.confirm(
+        'Xác nhận reset mật khẩu theo kịch bản demo (đăng nhập vẫn dùng MK mẫu 123456)? Hệ thống ghi AUTH_PASSWORD_RESET_BY_ADMIN + PATCH metadata user.',
+      )
+    ) {
+      return;
+    }
+    setSubmitting(true);
+    const now = new Date().toISOString();
+    try {
+      await fetch(`${API}/users/${editUser.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ demo_password_reset_at: now, demo_password_note: 'admin_reset_demo' }),
+      });
+      const adminId = normalizeUserId(user.id) ?? String(user.id ?? '');
+      const targetId = normalizeUserId(editUser.id) ?? String(editUser.id ?? '');
+      await postEntityAudit({
+        action: `Admin cấp lại mật khẩu — ${editUser.name}`,
+        actionType: AUDIT_ACTION_TYPE.AUTH_PASSWORD_RESET_BY_ADMIN,
+        entityId: accountAuditEntityId(emailT),
+        user: user.name || 'Admin',
+        user_id: adminId,
+        detail: `target_user_id=${targetId}`,
+        extra: { target_email: emailT, target_user_id: targetId, admin_user_id: adminId },
+      });
+      showToast('✅ Đã ghi AUTH_PASSWORD_RESET_BY_ADMIN + cập nhật user.', 'success');
+      setModalMode(null);
+      setEditUser(null);
+      await loadAll();
+    } catch {
+      showToast('Lỗi PATCH user hoặc audit.', 'danger');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleCreatePos = async () => {
@@ -192,7 +340,7 @@ export default function Feature10_IAM() {
       }
     }
 
-    await postLog(`[F10] Tạo POS mới: ${newPos.name}`, id);
+    await postLog(`[F10] Tạo POS mới: ${newPos.name}`, id, AUDIT_ACTION_TYPE.IAM_POS_CREATE, { detail: newPos.name });
     showToast(`✅ Đã tạo POS "${newPos.name}".`);
     setNewPos({ name: '', manager_id: '', manager_name: '', manager_user: null });
     setModalMode(null); setSubmitting(false); loadAll();
@@ -222,7 +370,7 @@ export default function Feature10_IAM() {
         status: editPos.status 
       }),
     });
-    await postLog(`[F10] Cập nhật POS: ${editPos.name}`, editPos.id);
+    await postLog(`[F10] Cập nhật POS: ${editPos.name}`, editPos.id, AUDIT_ACTION_TYPE.IAM_POS_UPDATE);
     showToast(`✅ Đã cập nhật POS "${editPos.name}".`);
     setModalMode(null); setEditPos(null); setSubmitting(false); loadAll();
   };
@@ -243,11 +391,11 @@ export default function Feature10_IAM() {
   });
 
   return (
-    <div className="p-4" style={{ background: '#f0f4ff', minHeight: '100vh' }}>
+    <div className="p-4" style={{ background: 'var(--ih-main-bg, #f0f4ff)', minHeight: '100vh' }}>
       <div className="d-flex justify-content-between align-items-start mb-4">
         <div>
           <h4 className="fw-bold mb-1" style={{ color: '#1a237e' }}>
-            <i className="bi bi-people-fill me-2"></i>Feature 10 – IAM & Cấu hình POS (UC011 + UC013)
+            <i className="bi bi-people-fill me-2"></i>IAM &amp; cấu hình POS
           </h4>
           <small className="text-muted">Quản trị tài khoản · RBAC · Vòng đời nhân viên · Không có nút Xóa</small>
         </div>
@@ -336,7 +484,7 @@ export default function Feature10_IAM() {
                   <div key={u.id} className="p-3 border-bottom d-flex align-items-center justify-content-between">
                     <div>
                       <span className="fw-semibold me-2">{u.name}</span>
-                      <span className={`badge bg-${ROLE_COLOR[u.role] || 'secondary'} me-2`}>{ROLE_LABEL[u.role] || u.role}</span>
+                      <span className={`${roleBadgeClass(u.role)} me-2`}>{ROLE_LABEL[u.role] || u.role}</span>
                       <span className="badge bg-warning text-dark">Chờ kích hoạt</span>
                     </div>
                     <button className="btn btn-sm btn-success" onClick={() => handleActivate(u)}>
@@ -359,7 +507,8 @@ export default function Feature10_IAM() {
                     <tr>
                       <th className="small text-muted">Mã NV</th>
                       <th className="small text-muted">User</th>
-                      <th className="small text-muted">Họ và tên / Chức vụ</th>
+                      <th className="small text-muted">Họ và tên</th>
+                      <th className="small text-muted">Chức vụ</th>
                       <th className="small text-muted">Chi nhánh làm việc</th>
                       <th className="small text-muted">Số ĐT</th>
                       <th className="small text-muted text-center">Trạng thái</th>
@@ -374,9 +523,9 @@ export default function Feature10_IAM() {
                         <tr key={u.id} className={status === 'locked' || status === 'inactive' ? 'opacity-75 bg-light' : ''}>
                           <td><span className="badge bg-secondary">{u.id}</span></td>
                           <td className="fw-semibold text-primary">{userMail}</td>
+                          <td className="fw-bold">{u.name}</td>
                           <td>
-                            <div className="fw-bold">{u.name}</div>
-                            <span className={`badge bg-${ROLE_COLOR[u.role] || 'secondary'} ${u.role === 'pos_manager' ? 'text-dark' : ''} mt-1`} style={{fontSize:10}}>
+                            <span className={roleBadgeClass(u.role)}>
                               {ROLE_LABEL[u.role] || u.role}
                             </span>
                           </td>
@@ -386,7 +535,7 @@ export default function Feature10_IAM() {
                           </td>
                           <td>{u.phone || '—'}</td>
                           <td className="text-center">
-                            <span className={`badge bg-${STATUS_COLOR[status] || 'secondary'} ${status === 'pending' ? 'text-dark' : ''}`}>
+                            <span className={userStatusBadgeClass(status)}>
                               {status === 'active' ? '✅ Hoạt động' : status === 'locked' ? '🔒 Bị khóa' : status === 'inactive' ? '🚫 Nghỉ việc' : '⏳ Chờ kích hoạt'}
                             </span>
                           </td>
@@ -493,10 +642,10 @@ export default function Feature10_IAM() {
           setPermMatrix(curr);
           setPermSaved(false);
         };
-        const handleSave = () => {
+        const handleSave = async () => {
           savePermissions(permMatrix);
           setPermSaved(true);
-          postLog('[F10] Cập nhật Ma trận Phân quyền', 'SYSTEM');
+          await postLog('[F10] Cập nhật Ma trận Phân quyền', 'SYSTEM', AUDIT_ACTION_TYPE.IAM_PERMISSION_MATRIX_SAVE);
           showToast('✅ Đã lưu Ma trận Phân quyền. Hiệu lực ngay lập tức!', 'success');
         };
         const handleReset = () => {
@@ -536,7 +685,7 @@ export default function Feature10_IAM() {
                     <th className="text-center" style={{fontSize:12}}>Admin Tổng</th>
                     {CONFIGURABLE.map(r => (
                       <th key={r} className="text-center" style={{fontSize:12}}>
-                        <span className={`badge bg-${ROLE_COLOR[r]} ${r==='pos_manager'?'text-dark':''}`}>{ROLE_LABEL[r]}</span>
+                        <span className={roleBadgeClass(r)}>{ROLE_LABEL[r]}</span>
                       </th>
                     ))}
                   </tr>
@@ -801,12 +950,22 @@ export default function Feature10_IAM() {
                   </div>
                 </div>
               </div>
-              <div className="modal-footer border-0">
-                <button className="btn btn-outline-secondary" onClick={() => { setModalMode(null); setEditUser(null); }}>Hủy</button>
-                <button className="btn btn-primary fw-bold px-4" onClick={handleEditUser} disabled={submitting || !editUser.name.trim()}>
-                  {submitting ? <span className="spinner-border spinner-border-sm me-2"></span> : null}
-                  Cập nhật
+              <div className="modal-footer border-0 d-flex flex-wrap align-items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-outline-warning btn-sm"
+                  onClick={handleAdminResetPasswordDemo}
+                  disabled={submitting}
+                >
+                  Reset mật khẩu (có ghi nhật ký)
                 </button>
+                <div className="ms-auto d-flex gap-2">
+                  <button className="btn btn-outline-secondary" onClick={() => { setModalMode(null); setEditUser(null); }}>Hủy</button>
+                  <button className="btn btn-primary fw-bold px-4" onClick={handleEditUser} disabled={submitting || !editUser.name.trim()}>
+                    {submitting ? <span className="spinner-border spinner-border-sm me-2"></span> : null}
+                    Cập nhật
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -832,9 +991,9 @@ export default function Feature10_IAM() {
                   <input className="form-control" value={newPos.manager_id} onChange={e => {
                     const val = e.target.value;
                     const valTrim = val.trim();
-                    const found = users.find(u => u.id === valTrim || u.email === valTrim);
-                    setNewPos({ ...newPos, manager_id: val, manager_name: found ? found.name : '', manager_user: found || null });
-                  }} placeholder="Nhập ID (vd: u002) hoặc Email..." />
+                    const found = users.find((u) => sameUserId(u.id, valTrim) || u.email === valTrim);
+                    setNewPos({ ...newPos, manager_id: found ? found.id : val, manager_name: found ? found.name : '', manager_user: found || null });
+                  }} placeholder="Nhập user_id (vd: 2) hoặc Email..." />
                   
                   {newPos.manager_id && newPos.manager_user && (
                     <div className="alert alert-warning mt-2 py-2 px-3 small mb-0 border-warning">
@@ -887,8 +1046,8 @@ export default function Feature10_IAM() {
                   <input className="form-control" value={editPos.manager_id} onChange={e => {
                     const val = e.target.value;
                     const valTrim = val.trim();
-                    const found = users.find(u => u.id === valTrim || u.email === valTrim);
-                    setEditPos({ ...editPos, manager_id: val, manager_name: found ? found.name : '', manager_user: found || null });
+                    const found = users.find((u) => sameUserId(u.id, valTrim) || u.email === valTrim);
+                    setEditPos({ ...editPos, manager_id: found ? found.id : val, manager_name: found ? found.name : '', manager_user: found || null });
                   }} placeholder="Bỏ trống nếu không muốn đổi..." />
                   
                   {editPos.manager_id && editPos.manager_user && (

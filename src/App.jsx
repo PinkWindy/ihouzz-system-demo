@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import Home from './pages/Home';
 import SalesMobile from './pages/SalesMobile';
@@ -14,7 +15,19 @@ import Feature9_Warehouse from './pages/Feature9_Warehouse';
 import Feature10_IAM from './pages/Feature10_IAM';
 import Feature11_Audit from './pages/Feature11_Audit';
 import Feature12_Dashboard from './pages/Feature12_Dashboard';
-import { hasPermission } from './utils/permissions';
+import Feature_Diagrams from './pages/Feature_Diagrams';
+import { hasPermission, canViewDashboard } from './utils/permissions';
+import {
+  postEntityAudit,
+  AUDIT_ACTION_TYPE,
+  readSessionUser,
+  notifySessionChanged,
+  accountAuditEntityId,
+  touchAuthSessionActivity,
+  clearAuthSessionActivityKeys,
+  readDemoIdleSessionMs,
+} from './utils/listingWorkflow';
+import { normalizeUserId } from './utils/userId';
 
 function DashboardLayout({ children }) {
   const navigate = useNavigate();
@@ -28,127 +41,261 @@ function DashboardLayout({ children }) {
   const displayEmail = userObj2.email || `${role}@ihouzz.com`;
 
   const handleLogout = () => {
+    const u = readSessionUser();
+    const uidRaw = normalizeUserId(u.id) ?? u.id;
+    const uidStr = uidRaw != null && String(uidRaw).trim() !== '' ? String(uidRaw) : '';
+    const em = String(u.email || displayEmail || '').trim().toLowerCase();
+    void postEntityAudit({
+      action: 'Đăng xuất',
+      actionType: AUDIT_ACTION_TYPE.AUTH_LOGOUT,
+      entityId: accountAuditEntityId(em),
+      user: u.name || em || displayName || '—',
+      user_id: uidStr,
+      detail: 'DashboardLayout',
+    }).catch(() => {});
+    clearAuthSessionActivityKeys();
     localStorage.removeItem('user_role');
     localStorage.removeItem('user');
     localStorage.removeItem('pos_name');
+    notifySessionChanged();
     navigate('/login');
   };
 
+  useEffect(() => {
+    if (!userStr || role === 'guest') return undefined;
+
+    touchAuthSessionActivity();
+
+    const bump = () => touchAuthSessionActivity();
+    window.addEventListener('pointerdown', bump);
+    window.addEventListener('keydown', bump);
+    window.addEventListener('scroll', bump, true);
+
+    const tickMs = 20_000;
+    const id = setInterval(() => {
+      if (!localStorage.getItem('user')) return;
+      const raw = sessionStorage.getItem('ihouzz_last_activity');
+      const last = raw ? parseInt(raw, 10) : 0;
+      if (!Number.isFinite(last) || last <= 0) return;
+
+      const idleMs = readDemoIdleSessionMs();
+      const elapsed = Date.now() - last;
+      const warnLead =
+        idleMs > 6 * 60 * 1000 ? 5 * 60 * 1000 : Math.max(15_000, Math.floor(idleMs / 4));
+      const warnAfter = Math.max(0, idleMs - warnLead);
+
+      if (elapsed >= warnAfter && elapsed < idleMs && !sessionStorage.getItem('ihouzz_idle_warned')) {
+        try {
+          sessionStorage.setItem('ihouzz_idle_warned', '1');
+        } catch {
+          /* ignore */
+        }
+        window.alert(
+          'Phiên làm việc sắp hết hạn do không hoạt động. Bấm OK để ghi nhận tương tác và gia hạn.',
+        );
+        touchAuthSessionActivity();
+        return;
+      }
+
+      if (elapsed < idleMs) return;
+
+      const u = readSessionUser();
+      const uidRaw = normalizeUserId(u.id) ?? u.id;
+      const uidStr = uidRaw != null && String(uidRaw).trim() !== '' ? String(uidRaw) : '';
+      const em = String(u.email || displayEmail || '').trim().toLowerCase();
+      void postEntityAudit({
+        action: 'Phiên hết hạn — không hoạt động (idle)',
+        actionType: AUDIT_ACTION_TYPE.AUTH_SESSION_EXPIRED,
+        entityId: accountAuditEntityId(em),
+        user: u.name || em || displayName || '—',
+        user_id: uidStr,
+        detail: `idle_threshold_ms=${idleMs}`,
+        reason: 'idle_timeout',
+      }).catch(() => {});
+
+      clearAuthSessionActivityKeys();
+      localStorage.removeItem('user_role');
+      localStorage.removeItem('user');
+      localStorage.removeItem('pos_name');
+      notifySessionChanged();
+      navigate('/login');
+    }, tickMs);
+
+    return () => {
+      window.removeEventListener('pointerdown', bump);
+      window.removeEventListener('keydown', bump);
+      window.removeEventListener('scroll', bump, true);
+      clearInterval(id);
+    };
+  }, [userStr, role, navigate, displayEmail, displayName]);
+
+  const navLink = (path) =>
+    `ih-sidebar-link ${location.pathname === path ? 'ih-sidebar-link--active' : ''}`;
+
+  const routeContext =
+    {
+      '/dashboard': 'F12 · Báo cáo tổng hợp',
+      '/feature2': 'F2 · Tạo tài sản',
+      '/feature3': 'F3 · GĐ POS duyệt kho',
+      '/feature4': 'F4 · Soạn tin & gửi duyệt',
+      '/feature5': 'F5 · Duyệt niêm yết',
+      '/feature6': 'F6 · Gỡ tin',
+      '/feature7': 'F7 · Duyệt gỡ tin',
+      '/feature8': 'F8 · Gỡ nguồn',
+      '/feature9': 'F9 · Giám sát kho',
+      '/feature10': 'F10 · IAM & POS',
+      '/feature11': 'Nhật ký thao tác',
+      '/diagrams': 'Tài liệu · Sơ đồ Hệ thống',
+      '/sales': 'Legacy · Mobile đầu chủ',
+      '/pos': 'Legacy · Quản lý PC',
+    }[location.pathname] || 'Bản demo';
+
+  const roleLabel =
+    role === 'sales' ? 'Đầu chủ' : role === 'pos_manager' ? 'GĐ POS' : role === 'marketing' ? 'Marketing' : role;
+
   return (
-    <div className="d-flex" style={{ minHeight: '100vh' }}>
-      {/* Sidebar */}
-      <div className="bg-dark text-white p-3" style={{ width: '260px' }}>
-        <h4 className="text-primary fw-bold mb-4 mt-2">iHouzz</h4>
-        <div className="mb-4">
-          <div className="small text-muted text-uppercase fw-bold mb-2">Tài khoản</div>
-          <div className="d-flex align-items-center gap-2 mb-2">
-            <i className="bi bi-person-circle fs-4"></i>
-            <div>
-              <div className="fw-semibold" style={{ fontSize: 13 }}>{displayEmail}</div>
-              <div className="badge bg-success">Role: {role.toUpperCase()}</div>
-            </div>
+    <div className="ih-app-shell d-flex">
+      <aside className="ih-sidebar" aria-label="Điều hướng chính">
+        <div className="ih-sidebar-brand">
+          <div className="ih-sidebar-brand-mark" aria-hidden>
+            iH
           </div>
-          <button className="btn btn-outline-light btn-sm w-100" onClick={handleLogout}>Đăng xuất (FR1-011)</button>
+          <div>
+            <div className="ih-sidebar-brand-text">iHouzz</div>
+            <div className="ih-sidebar-brand-sub">Bản demo nội bộ</div>
+          </div>
         </div>
-        
-        <div className="small text-muted text-uppercase fw-bold mb-2">Điều hướng (Theo SRS)</div>
-        <div className="list-group list-group-flush rounded-0 bg-transparent">
-          <Link to="/dashboard" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/dashboard' ? 'active fw-bold' : ''}`}>
-            <i className="bi bi-pie-chart-fill me-2"></i> F12: Báo Cáo Tổng Hợp
-          </Link>
-          {/* Menu F2 */}
+
+        <div className="ih-sidebar-user">
+          <div className="ih-sidebar-section mb-2 mt-0">Tài khoản</div>
+          <div className="ih-sidebar-user-email">{displayEmail}</div>
+          <div className="ih-sidebar-user-meta">
+            <span className="badge bg-primary bg-opacity-75">Vai trò · {roleLabel}</span>
+          </div>
+          <button type="button" className="btn btn-outline-light btn-sm w-100 mt-3" onClick={handleLogout}>
+            Đăng xuất
+          </button>
+          <div className="ih-sidebar-qa-hint">
+            QA phiên idle: <code>localStorage.ihouzz_demo_idle_ms</code> (ms, tối thiểu <strong>60000</strong>). Mặc định
+            60 phút (mặc định).
+          </div>
+        </div>
+
+        <nav className="ih-sidebar-scroll d-flex flex-column gap-1 pb-2" aria-label="Chức năng chính">
+          <div className="ih-sidebar-section">Nghiệp vụ</div>
+          {canViewDashboard(role) && (
+            <Link to="/dashboard" className={navLink('/dashboard')} aria-current={location.pathname === '/dashboard' ? 'page' : undefined}>
+              <i className="bi bi-pie-chart-fill" aria-hidden />
+              F12 · Báo cáo tổng hợp
+            </Link>
+          )}
           {(role === 'admin' || (role === 'sales' && hasPermission(role, 'PROPERTY_CREATE'))) && (
-            <Link to="/feature2" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature2' ? 'active fw-bold' : ''}`}>
-              <i className="bi bi-plus-square me-2"></i> F2: Tạo tài sản
+            <Link to="/feature2" className={navLink('/feature2')} aria-current={location.pathname === '/feature2' ? 'page' : undefined}>
+              <i className="bi bi-plus-square" aria-hidden />
+              F2 · Tạo tài sản
             </Link>
           )}
-          {/* Menu F3 */}
           {(role === 'admin' || role === 'pos_manager') && (
-            <Link to="/feature3" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature3' ? 'active fw-bold' : ''}`}>
-              <i className="bi bi-check2-square me-2"></i> F3: GĐ POS Duyệt Kho
+            <Link to="/feature3" className={navLink('/feature3')} aria-current={location.pathname === '/feature3' ? 'page' : undefined}>
+              <i className="bi bi-check2-square" aria-hidden />
+              F3 · GĐ POS duyệt kho
             </Link>
           )}
-          {/* Menu F4 */}
           {(role === 'admin' || (role === 'sales' && hasPermission(role, 'LISTING_CREATE'))) && (
-            <Link to="/feature4" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature4' ? 'active fw-bold' : ''}`}>
-              <i className="bi bi-megaphone me-2"></i> F4: Soạn tin & gửi duyệt (UC004)
+            <Link to="/feature4" className={navLink('/feature4')} aria-current={location.pathname === '/feature4' ? 'page' : undefined}>
+              <i className="bi bi-megaphone" aria-hidden />
+              F4 · Soạn tin & gửi duyệt
             </Link>
           )}
-          {/* Menu F5 — Admin+MKT duyệt, Sales chỉ xem */}
           {(role === 'admin' || role === 'marketing' || role === 'sales') && (
-            <Link to="/feature5" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature5' ? 'active fw-bold' : ''}`}>
-              <i className="bi bi-patch-check me-2"></i> F5: Trung tâm duyệt niêm yết (UC005)
+            <Link to="/feature5" className={navLink('/feature5')} aria-current={location.pathname === '/feature5' ? 'page' : undefined}>
+              <i className="bi bi-patch-check" aria-hidden />
+              F5 · Duyệt niêm yết
             </Link>
           )}
-          {/* Menu F6 */}
           {(role === 'admin' || role === 'sales') && (
-            <Link to="/feature6" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature6' ? 'active fw-bold' : ''}`}>
-              <i className="bi bi-sign-stop me-2"></i> F6: Gỡ tin
+            <Link to="/feature6" className={navLink('/feature6')} aria-current={location.pathname === '/feature6' ? 'page' : undefined}>
+              <i className="bi bi-sign-stop" aria-hidden />
+              F6 · Gỡ tin
             </Link>
           )}
-          {/* Menu F7 */}
           {(role === 'admin' || role === 'marketing') && (
-            <Link to="/feature7" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature7' ? 'active fw-bold' : ''}`}>
-              <i className="bi bi-patch-check me-2"></i> F7: Duyệt Gỡ tin
+            <Link to="/feature7" className={navLink('/feature7')} aria-current={location.pathname === '/feature7' ? 'page' : undefined}>
+              <i className="bi bi-patch-check" aria-hidden />
+              F7 · Duyệt gỡ tin
             </Link>
           )}
-          {/* Menu F8 */}
           {(role === 'admin' || role === 'sales' || role === 'pos_manager') && (
-            <Link to="/feature8" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature8' ? 'active fw-bold' : ''}`}>
-              <i className="bi bi-x-octagon me-2"></i> F8: Gỡ nguồn
+            <Link to="/feature8" className={navLink('/feature8')} aria-current={location.pathname === '/feature8' ? 'page' : undefined}>
+              <i className="bi bi-x-octagon" aria-hidden />
+              F8 · Gỡ nguồn
             </Link>
           )}
 
-          {/* Quản trị */}
           {(role === 'admin' || role === 'pos_manager' || role === 'marketing' || role === 'sales') && (
             <>
-              <div className="mt-3 mb-2 small text-muted text-uppercase fw-bold">Quản trị</div>
-              {/* F9: Tất cả role đều thấy */}
+              <div className="ih-sidebar-section">Quản trị</div>
               {(role === 'admin' || hasPermission(role, 'PROPERTY_VIEW_LIST')) && (
-              <Link to="/feature9" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature9' ? 'active fw-bold' : ''}`}>
-                <i className="bi bi-graph-up me-2"></i> F9: Giám sát Kho
-              </Link>
+                <Link to="/feature9" className={navLink('/feature9')} aria-current={location.pathname === '/feature9' ? 'page' : undefined}>
+                  <i className="bi bi-graph-up" aria-hidden />
+                  F9 · Giám sát kho
+                </Link>
               )}
               {(role === 'admin' || role === 'pos_manager') && (
-                <Link to="/feature10" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature10' ? 'active fw-bold' : ''}`}>
-                  <i className="bi bi-people me-2"></i> F10: IAM & POS
+                <Link to="/feature10" className={navLink('/feature10')} aria-current={location.pathname === '/feature10' ? 'page' : undefined}>
+                  <i className="bi bi-people" aria-hidden />
+                  F10 · IAM & POS
                 </Link>
               )}
               {role === 'admin' && (
-                <Link to="/feature11" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/feature11' ? 'active fw-bold' : ''}`}>
-                  <i className="bi bi-journal-text me-2"></i> F11: Audit Trail
+                <Link to="/feature11" className={navLink('/feature11')} aria-current={location.pathname === '/feature11' ? 'page' : undefined}>
+                  <i className="bi bi-journal-text" aria-hidden />
+                  Nhật ký thao tác
                 </Link>
               )}
             </>
           )}
 
-          <div className="mt-4 mb-2 small text-muted text-uppercase fw-bold">Legacy Demo</div>
-          <Link to="/sales" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/sales' ? 'active' : ''}`}>
-            <i className="bi bi-phone me-2"></i> Màn hình Đầu chủ (Mobile)
+          <div className="ih-sidebar-section">Tài liệu & Demo</div>
+          <Link to="/diagrams" className={navLink('/diagrams')} aria-current={location.pathname === '/diagrams' ? 'page' : undefined}>
+            <i className="bi bi-diagram-3" aria-hidden />
+            Sơ đồ Hệ thống
           </Link>
-          <Link to="/pos" className={`list-group-item list-group-item-action bg-transparent text-white border-secondary ${location.pathname === '/pos' ? 'active' : ''}`}>
-            <i className="bi bi-display me-2"></i> Màn hình Quản lý (PC)
+          <Link to="/sales" className={navLink('/sales')} aria-current={location.pathname === '/sales' ? 'page' : undefined}>
+            <i className="bi bi-phone" aria-hidden />
+            Mobile đầu chủ
           </Link>
-        </div>
-      </div>
-      
-      {/* Main Content */}
-      <div className="flex-grow-1 bg-light d-flex flex-column" style={{ height: '100vh', overflow: 'hidden' }}>
-        {/* Top Navbar */}
-        <div className="bg-white border-bottom px-4 py-2 d-flex justify-content-end align-items-center shadow-sm" style={{ height: '60px' }}>
-          <div className="text-end">
-            <div className="fw-bold text-primary">{userObj2.name || 'User'}</div>
-            <div className="small text-muted"><i className="bi bi-geo-alt-fill me-1 text-danger"></i>{userObj2.pos_name || (role === 'admin' ? 'Toàn quyền hệ thống' : 'Marketing Dept.')}</div>
+          <Link to="/pos" className={navLink('/pos')} aria-current={location.pathname === '/pos' ? 'page' : undefined}>
+            <i className="bi bi-display" aria-hidden />
+            Quản lý PC
+          </Link>
+        </nav>
+      </aside>
+
+      <div className="ih-main">
+        <header className="ih-topbar">
+          <div className="ih-topbar-title d-none d-sm-block">
+            <strong>{routeContext}</strong>
+            <span className="text-muted fw-normal"> · iHouzz demo</span>
           </div>
-          <div className="ms-3 rounded-circle bg-primary bg-gradient text-white d-flex align-items-center justify-content-center fw-bold shadow" style={{ width: 42, height: 42, fontSize: 18, border: '2px solid #fff' }}>
-            {(userObj2.name || 'U')[0].toUpperCase()}
+          <div className="d-sm-none ih-topbar-title">
+            <strong>iHouzz</strong>
           </div>
-        </div>
-        
-        {/* Content Area */}
-        <div className="flex-grow-1" style={{ overflowY: 'auto' }}>
-          {children}
-        </div>
+          <div className="ih-topbar-user">
+            <div>
+              <div className="ih-topbar-name">{userObj2.name || 'Người dùng'}</div>
+              <div className="ih-topbar-meta text-truncate">
+                <i className="bi bi-geo-alt text-primary me-1" aria-hidden />
+                {userObj2.pos_name || (role === 'admin' ? 'Toàn hệ thống' : 'Phòng Marketing')}
+              </div>
+            </div>
+            <div className="ih-avatar" aria-hidden>
+              {(userObj2.name || 'U')[0].toUpperCase()}
+            </div>
+          </div>
+        </header>
+
+        <div className="ih-main-scroll">{children}</div>
       </div>
     </div>
   );
@@ -171,6 +318,7 @@ function App() {
         <Route path="/feature9" element={<DashboardLayout><Feature9_Warehouse /></DashboardLayout>} />
         <Route path="/feature10" element={<DashboardLayout><Feature10_IAM /></DashboardLayout>} />
         <Route path="/feature11" element={<DashboardLayout><Feature11_Audit /></DashboardLayout>} />
+        <Route path="/diagrams" element={<DashboardLayout><Feature_Diagrams /></DashboardLayout>} />
         <Route path="/sales" element={<DashboardLayout><SalesMobile /></DashboardLayout>} />
         <Route path="/pos" element={<DashboardLayout><POSDesktop /></DashboardLayout>} />
       </Routes>

@@ -1,16 +1,79 @@
-import { useState, useEffect } from 'react';
-import { shouldMaskAddress } from '../utils/permissions';
-import { formatPropertyId } from '../utils/listingWorkflow';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
+import { shouldMaskAddress, formatPropertyPriceDisplay } from '../utils/permissions';
+import {
+  API,
+  readSessionUser,
+  SESSION_CHANGED_EVENT,
+  formatPropertyId,
+  formatListingId,
+} from '../utils/listingWorkflow';
 import { UPDATE_REQUEST_PENDING } from '../utils/propertyUpdateWorkflow';
 import { filterWarehouseProperties, warehouseMyProps } from '../utils/warehouseFilter';
 
-const API = 'http://localhost:5000';
+/** Đồng bộ F7/F8/F9 — map `readSessionUser()` sang shape filter/mask. */
+function authFromSessionUser(u) {
+  if (!u || u.role === 'guest') {
+    return { role: 'sales', pos_name: '', pos_id: null, user_id: '', name: '' };
+  }
+  const role = u.role || 'sales';
+  const posNameRaw = role === 'admin' ? null : u.pos_name || '';
+  const rawPid = u.pos_id;
+  const pos_id = rawPid === '' || rawPid == null ? null : Number(rawPid);
+  return {
+    role,
+    pos_name: posNameRaw == null ? '' : String(posNameRaw),
+    pos_id: Number.isNaN(pos_id) ? null : pos_id,
+    user_id: String(u.id ?? ''),
+    name: u.name || '',
+  };
+}
+
+function normalizeJsonList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  return [];
+}
 
 const lv1Color = { 'Được duyệt':'success','Được đảm bảo':'warning','Chờ POS duyệt':'info','Bị từ chối':'danger','Đã gỡ nguồn':'dark','Chờ duyệt gỡ nguồn':'secondary','Chờ KH ký':'primary' };
-const lv2Color = { 'Đang niêm yết':'success','Chưa niêm yết':'secondary','Thẩm định phí':'info','Đã gỡ':'dark','Khởi tạo':'light','Chờ chỉnh sửa':'warning','Chờ duyệt chỉnh sửa':'info' };
+const lv2Color = { 'Đang niêm yết':'success','Chưa niêm yết':'secondary','Thẩm định phí':'info','Đã gỡ':'dark','Đã gỡ nguồn':'dark','Khởi tạo':'light','Chờ chỉnh sửa':'warning','Chờ duyệt chỉnh sửa':'info' };
+
+/** Badge tin đăng trên bảng — tránh `bg-orange` / chuỗi không hợp lệ của Bootstrap. */
+const LISTING_STATUS_BADGE = {
+  'Chờ duyệt': 'warning',
+  'Chờ duyệt chỉnh sửa': 'info',
+  'Đã duyệt': 'success',
+  'Từ chối': 'danger',
+  'Yêu cầu gỡ tin': 'secondary',
+  'Đã gỡ': 'dark',
+};
+
+/** Bootstrap `bg-light` / `bg-warning` trên nền trắng dễ mất chữ — ép tương phản. */
+function statusBadgeClass(bgKey) {
+  const k = bgKey || 'secondary';
+  if (k === 'light') return 'badge bg-light text-dark border';
+  if (k === 'warning') return 'badge bg-warning text-dark';
+  return `badge bg-${k}`;
+}
 
 const DEMO_PROP_IMG =
   'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80';
+
+/** Ngày theo lịch local (YYYY-MM-DD) — tránh lệch múi giờ của `toISOString()`. */
+function formatLocalYmd(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function defaultF9DateRange() {
+  const now = new Date();
+  return {
+    from: formatLocalYmd(new Date(now.getFullYear(), now.getMonth(), 1)),
+    to: formatLocalYmd(now),
+  };
+}
 
 function resolveImageUrl(u) {
   if (!u) return DEMO_PROP_IMG;
@@ -32,21 +95,24 @@ function collectPropertyGalleryUrls(property, listings) {
   return urls;
 }
 
-// Đọc user TRONG component để luôn mới sau login
-const getUser = () => {
-  const str = localStorage.getItem('user');
-  const obj = str ? JSON.parse(str) : {};
-  const raw = obj.role || 'sales';
-  const role = raw === 'pos' ? 'pos_manager' : raw === 'mkt' ? 'marketing' : raw;
-  const pos_name = role === 'admin' ? null : (obj.pos_name || '');
-  const rawPid = obj.pos_id;
-  const pos_id = rawPid === '' || rawPid == null ? null : Number(rawPid);
-  const user_id = obj.id || '';
-  return { role, pos_name, pos_id: Number.isNaN(pos_id) ? null : pos_id, user_id, name: obj.name || '' };
-};
+/** Hiển thị Lv2 đồng bộ với tin đã duyệt khi dữ liệu TS chưa được PATCH (vd. LS-00026). */
+function effectiveLevel2Status(property, listings) {
+  if (!property) return '—';
+  const fromDb = property.level2_status || property.statusLv2 || '';
+  const hasApprovedListing = (listings || []).some(
+    (l) => l && l.property_id === property.id && l.listing_status === 'Đã duyệt',
+  );
+  if (hasApprovedListing && (fromDb === 'Chưa niêm yết' || fromDb === 'Khởi tạo' || fromDb === '')) {
+    return 'Đang niêm yết';
+  }
+  return fromDb || '—';
+}
 
 export default function Feature9_Warehouse() {
-  const { role: ROLE, pos_name: POS_NAME, pos_id: POS_ID, user_id: USER_ID } = getUser();
+  const location = useLocation();
+  const [user, setUser] = useState(() => readSessionUser());
+  const auth = useMemo(() => authFromSessionUser(user), [user]);
+  const { role: ROLE, pos_name: POS_NAME, pos_id: POS_ID, user_id: USER_ID } = auth;
 
   // Ẩn địa chỉ theo BR-013: sales/pos_manager không thấy địa chỉ TS của POS khác
   const maskAddress = (prop) => {
@@ -56,7 +122,7 @@ export default function Feature9_Warehouse() {
     // Tài sản của POS khác và không có quyền xem -> ẩn địa chỉ
     if (!prop.address) return '***';
     const parts = prop.address.split(',');
-    return parts.length > 2 ? `***, ${parts.slice(-2).join(',').trim()}` : '*** (BR-013)';
+    return parts.length > 2 ? `***, ${parts.slice(-2).join(',').trim()}` : '***';
   };
 
   const isMasked = (prop) => maskAddress(prop) !== prop.address;
@@ -71,27 +137,68 @@ export default function Feature9_Warehouse() {
   const [search, setSearch] = useState('');
   const [filterLv1, setFilterLv1] = useState('');
   const [filterType, setFilterType] = useState('');
-  // Default filter: Sales → chỉ tài sản của mình, POS Manager → POS của mình, Admin → tất cả
-  const [filterPOS, setFilterPOS] = useState(
-    ROLE === 'sales' ? 'MINE' : ROLE === 'pos_manager' ? (POS_NAME || 'ALL') : '',
-  );
+  const [filterListing, setFilterListing] = useState('');
+  const { from: defaultFrom, to: defaultTo } = defaultF9DateRange();
+  const [dateFrom, setDateFrom] = useState(defaultFrom);
+  const [dateTo, setDateTo] = useState(defaultTo);
+  const [filterPOS, setFilterPOS] = useState(() => {
+    const a = authFromSessionUser(readSessionUser());
+    if (a.role === 'sales') return 'MINE';
+    if (a.role === 'pos_manager') return a.pos_name || 'ALL';
+    return '';
+  });
 
-  useEffect(() => { load(); }, []);
-  const load = async () => {
+  useEffect(() => {
+    const bump = () => setUser(readSessionUser());
+    window.addEventListener('storage', bump);
+    window.addEventListener(SESSION_CHANGED_EVENT, bump);
+    return () => {
+      window.removeEventListener('storage', bump);
+      window.removeEventListener(SESSION_CHANGED_EVENT, bump);
+    };
+  }, []);
+
+  const prevIdentityRef = useRef('');
+  useEffect(() => {
+    const key = `${auth.user_id}|${auth.role}`;
+    if (prevIdentityRef.current === key) return;
+    prevIdentityRef.current = key;
+    if (auth.role === 'sales') setFilterPOS('MINE');
+    else if (auth.role === 'pos_manager') setFilterPOS(auth.pos_name || 'ALL');
+    else setFilterPOS('');
+  }, [auth.user_id, auth.role, auth.pos_name]);
+
+  useEffect(() => {
+    const st = location.state;
+    if (!st || typeof st !== 'object') return;
+    if (st.search != null) setSearch(String(st.search));
+    if (st.filterLv1) setFilterLv1(st.filterLv1);
+    if (st.filterListing) setFilterListing(st.filterListing);
+    if (st.dateFrom) setDateFrom(st.dateFrom);
+    if (st.dateTo) setDateTo(st.dateTo);
+  }, [location.key]);
+
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [data, lst, logRows] = await Promise.all([
-        fetch(`${API}/properties`).then((r) => r.json()),
-        fetch(`${API}/listings`).then((r) => r.json()),
-        fetch(`${API}/logs`).then((r) => r.json()).catch(() => []),
+      const [dataRaw, lstRaw, logRaw] = await Promise.all([
+        fetch(`${API}/properties`, { headers: { 'Cache-Control': 'no-cache' } }).then((r) => r.json()),
+        fetch(`${API}/listings`, { headers: { 'Cache-Control': 'no-cache' } }).then((r) => r.json()),
+        fetch(`${API}/logs?_per_page=1000`, { headers: { 'Cache-Control': 'no-cache' } })
+          .then((r) => r.json())
+          .catch(() => []),
       ]);
-      setProps(Array.isArray(data) ? data : []);
-      setListings(Array.isArray(lst) ? lst : []);
-      setLogs(Array.isArray(logRows) ? logRows : []);
+      setProps(normalizeJsonList(dataRaw));
+      setListings(normalizeJsonList(lstRaw));
+      setLogs(normalizeJsonList(logRaw));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const propertyLogEntries = (property) => {
     if (!property || !Array.isArray(logs)) return [];
@@ -100,9 +207,9 @@ export default function Feature9_Warehouse() {
     );
     const rows = logs.filter((row) => {
       const eid = row.entityId != null ? String(row.entityId) : '';
-      if (!eid) return false;
-      if (idSet.has(eid)) return true;
-      if (idSet.has(formatPropertyId(eid))) return true;
+      const pid = row.property_id != null ? String(row.property_id) : '';
+      if (eid && (idSet.has(eid) || idSet.has(formatPropertyId(eid)))) return true;
+      if (pid && (idSet.has(pid) || idSet.has(formatPropertyId(pid)))) return true;
       return false;
     });
     return rows.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
@@ -116,7 +223,7 @@ export default function Feature9_Warehouse() {
   const allPosList = [...new Set(props.map(p => p.pos_name).filter(Boolean))];
   const allLv1List = [...new Set(props.map(p => p.level1_status).filter(Boolean))];
 
-  const filtered = filterWarehouseProperties(props, {
+  let filtered = filterWarehouseProperties(props, {
     ROLE,
     POS_NAME,
     USER_ID,
@@ -127,6 +234,34 @@ export default function Feature9_Warehouse() {
     filterPOS,
   });
 
+  if (filterListing) {
+    filtered = filtered.filter(p => {
+      // Special case: "Dã gỡ nguồn" maps to listing status "Dã gỡ" OR the property itself has level1_status "Dã gỡ nguồn"
+      if (filterListing === 'Đã gỡ') {
+        if (p.level1_status === 'Đã gỡ nguồn') return true;
+        const pListings = listings.filter(l => l.property_id === p.id);
+        return pListings.some(l => l.listing_status === 'Đã gỡ' || l.listing_status === 'Đã gỡ nguồn');
+      }
+      // "Dã duyệt" means listing_status === "Dã duyệt" (= DĂng niêm yết in Lv2)
+      const pListings = listings.filter(l => l.property_id === p.id);
+      return pListings.some(l => l.listing_status === filterListing);
+    });
+  }
+
+  // Filter by date range
+  if (dateFrom || dateTo) {
+    filtered = filtered.filter(p => {
+      const dateFields = [p.createdAt, p.updatedAt, p.unsourceApprovedAt, p.unsourceRequestedAt, p.rejectedAt, p.approvedAt];
+      return dateFields.some(d => {
+        if (!d) return false;
+        const day = d.slice(0, 10);
+        if (dateFrom && day < dateFrom) return false;
+        if (dateTo && day > dateTo) return false;
+        return true;
+      });
+    });
+  }
+
   // Stats chỉ tính trong phạm vi POS của user
   const myProps = warehouseMyProps(props, ROLE, POS_NAME, USER_ID);
 
@@ -134,21 +269,21 @@ export default function Feature9_Warehouse() {
     { label: 'Tổng tài sản', value: myProps.length, color: '#1976d2', icon: 'bi-building' },
     { label: 'Kho chuẩn', value: myProps.filter(p => p.warehouse_type === 'Kho chuẩn').length, color: '#388e3c', icon: 'bi-check-circle' },
     { label: 'Kho đảm bảo', value: myProps.filter(p => p.warehouse_type === 'Kho đảm bảo').length, color: '#f57c00', icon: 'bi-shield-check' },
-    { label: 'Đang niêm yết', value: myProps.filter(p => p.level2_status === 'Đang niêm yết').length, color: '#7b1fa2', icon: 'bi-broadcast' },
+    { label: 'Đang niêm yết', value: myProps.filter((p) => effectiveLevel2Status(p, listings) === 'Đang niêm yết').length, color: '#7b1fa2', icon: 'bi-broadcast' },
     { label: 'Đã gỡ nguồn', value: myProps.filter(p => p.level1_status === 'Đã gỡ nguồn').length, color: '#616161', icon: 'bi-archive' },
   ];
 
   return (
-    <div className="p-4" style={{ background: '#f5f7fa', minHeight: '100vh' }}>
+    <div className="p-4" style={{ background: 'var(--ih-main-bg, #f5f7fa)', minHeight: '100vh' }}>
       <div className="d-flex justify-content-between align-items-start mb-4">
         <div>
           <h4 className="fw-bold mb-1" style={{ color: '#0d47a1' }}>
-            <i className="bi bi-graph-up me-2"></i>Feature 9 – Tra cứu & Giám sát Kho (UC010)
+            <i className="bi bi-graph-up me-2"></i>Tra cứu &amp; giám sát kho
           </h4>
           <small className="text-muted">
             Role: <strong>{ROLE.toUpperCase()}</strong>
             {POS_NAME && <span className="badge bg-info text-dark ms-2">{POS_NAME}</span>}
-            {ROLE !== 'admin' && <span className="badge bg-warning text-dark ms-2">BR-013: Địa chỉ POS khác bị ẩn</span>}
+            {ROLE !== 'admin' && <span className="badge bg-warning text-dark ms-2">Địa chỉ chi nhánh khác được ẩn một phần</span>}
           </small>
         </div>
         <button className="btn btn-outline-primary btn-sm" onClick={load}>
@@ -170,11 +305,27 @@ export default function Feature9_Warehouse() {
         ))}
       </div>
 
-      {/* Warning banner */}
+      {/* Ẩn / hiện tài sản đã gỡ nguồn — chỉ banner (bỏ switch trùng chức năng) */}
       {removedCount > 0 && !showRemoved && (
-        <div className="alert alert-secondary d-flex align-items-center justify-content-between py-2 mb-3">
-          <span><i className="bi bi-eye-slash me-2"></i>Đang ẩn <strong>{removedCount}</strong> tài sản đã gỡ nguồn.</span>
-          <button className="btn btn-sm btn-outline-secondary" onClick={() => setShowRemoved(true)}>Hiển thị</button>
+        <div className="alert alert-secondary d-flex align-items-center justify-content-between py-2 mb-3 flex-wrap gap-2">
+          <span>
+            <i className="bi bi-eye-slash me-2"></i>
+            Đang ẩn <strong>{removedCount}</strong> tài sản <strong>Đã gỡ nguồn</strong> (Level 1). Ở bộ lọc Level 1 có thể chọn riêng trạng thái đó khi cần.
+          </span>
+          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setShowRemoved(true)}>
+            Hiển thị trong danh sách
+          </button>
+        </div>
+      )}
+      {removedCount > 0 && showRemoved && (
+        <div className="alert alert-info d-flex align-items-center justify-content-between py-2 mb-3 flex-wrap gap-2">
+          <span>
+            <i className="bi bi-eye me-2"></i>
+            Đang hiển thị cả <strong>{removedCount}</strong> tài sản đã gỡ nguồn.
+          </span>
+          <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setShowRemoved(false)}>
+            Ẩn tài sản đã gỡ
+          </button>
         </div>
       )}
 
@@ -197,6 +348,17 @@ export default function Feature9_Warehouse() {
               <option value="Thuê">Thuê</option>
             </select>
           </div>
+          <div className="col-md-2">
+            <select className="form-select form-select-sm" value={filterListing} onChange={e => setFilterListing(e.target.value)}>
+              <option value="">Trạng thái Niêm yết</option>
+              <option value="Chờ duyệt">Chờ duyệt</option>
+              <option value="Chờ duyệt chỉnh sửa">Chờ duyệt chỉnh sửa</option>
+              <option value="Đã duyệt">Đã duyệt (Đang niêm yết)</option>
+              <option value="Từ chối">Từ chối</option>
+              <option value="Yêu cầu gỡ tin">Yêu cầu gỡ tin</option>
+              <option value="Đã gỡ">Đã gỡ</option>
+            </select>
+          </div>
           <div className="col-md-3">
             {/* Lọc POS: chỉ Admin được thay đổi */}
             {ROLE === 'admin' ? (
@@ -212,10 +374,51 @@ export default function Feature9_Warehouse() {
               </select>
             )}
           </div>
-          <div className="col-md-2 d-flex align-items-center gap-2">
-            <div className="form-check form-switch mb-0">
-              <input className="form-check-input" type="checkbox" id="showRemovedSwitch" checked={showRemoved} onChange={e => setShowRemoved(e.target.checked)} />
-              <label className="form-check-label small" htmlFor="showRemovedSwitch">Hiện đã gỡ</label>
+          <div className="col-md-3">
+            <div className="d-flex gap-1 align-items-center flex-wrap">
+              <span className="input-group-text bg-white border rounded-start" style={{ fontSize: 11 }} title="Từ đầu tháng đến hôm nay (mặc định)">
+                <i className="bi bi-calendar3"></i>
+              </span>
+              <input
+                type="date"
+                className="form-control form-control-sm"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                title="Từ ngày"
+              />
+              <span className="small text-muted">—</span>
+              <input
+                type="date"
+                className="form-control form-control-sm"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                title="Đến ngày"
+              />
+              <button
+                className="btn btn-outline-secondary btn-sm"
+                type="button"
+                onClick={() => {
+                  const r = defaultF9DateRange();
+                  setDateFrom(r.from);
+                  setDateTo(r.to);
+                }}
+                title="Đặt lại: đầu tháng → hôm nay"
+              >
+                Đặt lại
+              </button>
+              {(dateFrom || dateTo) && (
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary btn-sm"
+                  title="Bỏ lọc ngày"
+                  onClick={() => {
+                    setDateFrom('');
+                    setDateTo('');
+                  }}
+                >
+                  ×
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -227,13 +430,14 @@ export default function Feature9_Warehouse() {
           <div className="card border-0 shadow-sm">
             <div className="card-header border-0 bg-white fw-semibold small d-flex justify-content-between">
               <span>Danh sách ({filtered.length} tài sản)</span>
-              {ROLE !== 'admin' && <span className="text-warning small"><i className="bi bi-shield-lock me-1"></i>BR-013: Địa chỉ POS khác bị ẩn</span>}
+              {ROLE !== 'admin' && <span className="text-warning small"><i className="bi bi-shield-lock me-1"></i>Địa chỉ tài sản ngoài phạm vi chi nhánh được ẩn một phần</span>}
             </div>
-            <div className="table-responsive" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            <div className="table-responsive" style={{ maxHeight: '60vh', overflow: 'auto' }}>
               <table className="table table-hover align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
                 <thead className="table-light sticky-top">
                   <tr>
                     <th className="small text-muted">Mã TS</th>
+                    <th className="small text-muted">Mã Tin Đăng</th>
                     <th className="small text-muted">Loại BĐS</th>
                     <th className="small text-muted">Địa chỉ</th>
                     <th className="small text-muted">Trạng thái Lv1</th>
@@ -260,19 +464,48 @@ export default function Feature9_Warehouse() {
                   {!loading && filtered.map(p => {
                     const masked = isMasked(p);
                     const isSelected = selected?.id === p.id;
+                    // Get latest listing for this property (highest listingCode / most recent createdAt)
+                    const propListings = listings.filter(l => l.property_id === p.id);
+                    const latestListing = propListings.length > 0
+                      ? propListings.reduce((a, b) => {
+                          const aCode = a.listingCode || a.id || '';
+                          const bCode = b.listingCode || b.id || '';
+                          // Compare by sequence number if LT-##### format, else by createdAt
+                          const aNum = parseInt((aCode.match(/LT-(\d+)/i) || [0, 0])[1], 10);
+                          const bNum = parseInt((bCode.match(/LT-(\d+)/i) || [0, 0])[1], 10);
+                          if (aNum && bNum) return aNum > bNum ? a : b;
+                          return (a.createdAt || '') > (b.createdAt || '') ? a : b;
+                        })
+                      : null;
+                    const latestListingCode = latestListing
+                      ? formatListingId(latestListing.listingCode || latestListing.id)
+                      : null;
+                    const listingBadgeBg = LISTING_STATUS_BADGE[latestListing?.listing_status] || 'secondary';
+                    const lv2Display = effectiveLevel2Status(p, listings);
                     return (
                       <tr key={p.id}
                         className={`${isSelected ? 'bg-primary bg-opacity-10' : ''} ${p.level1_status === 'Đã gỡ nguồn' ? 'opacity-50' : ''}`}
                         style={{ cursor: 'pointer' }}
                         onClick={() => setSelected(isSelected ? null : p)}>
-                        <td><span className="badge bg-dark">{formatPropertyId(p.id)}</span></td>
+                        <td><span className="badge bg-dark">{formatPropertyId(p.propertyCode || p.id)}</span></td>
+                        <td>
+                          {latestListingCode
+                            ? <span className={statusBadgeClass(listingBadgeBg)} title={`Trạng thái: ${latestListing?.listing_status || ''}`}>{latestListingCode}</span>
+                            : <span className="text-muted small">—</span>
+                          }
+                        </td>
                         <td>{p.propertyType || 'Chung cư'}</td>
                         <td className={masked ? 'text-muted fst-italic' : ''}>
                           {masked && <i className="bi bi-shield-lock me-1 text-warning"></i>}
                           {maskAddress(p)}
                         </td>
-                        <td><span className={`badge bg-${lv1Color[p.level1_status] || 'secondary'}`}>{p.level1_status}</span></td>
-                        <td><span className={`badge bg-${lv2Color[p.level2_status] || 'secondary'}`}>{p.level2_status}</span></td>
+                        <td><span className={statusBadgeClass(lv1Color[p.level1_status])}>{p.level1_status}</span></td>
+                        <td>
+                          <span className={statusBadgeClass(lv2Color[lv2Display])}>{lv2Display}</span>
+                          {lv2Display !== (p.level2_status || p.statusLv2) && (
+                            <div className="small text-muted mt-1" title="Đồng bộ hiển thị theo tin đăng Đã duyệt">↳ theo tin đăng</div>
+                          )}
+                        </td>
                         <td><span className={`badge ${p.type === 'Bán' ? 'bg-danger' : 'bg-info text-dark'}`}>{p.type}</span></td>
                         <td>{p.createdBy || '—'}</td>
                         <td>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('vi-VN') : '—'}</td>
@@ -292,7 +525,7 @@ export default function Feature9_Warehouse() {
           <div className="col-md-5">
             <div className="card border-0 shadow-sm h-100">
               <div className="card-header border-0 bg-primary text-white d-flex justify-content-between align-items-center">
-                <span className="fw-bold"><i className="bi bi-building me-1"></i>{formatPropertyId(selected.id)}</span>
+                <span className="fw-bold"><i className="bi bi-building me-1"></i>{formatPropertyId(selected.propertyCode || selected.id)}</span>
                 <button className="btn-close btn-close-white btn-sm" onClick={() => setSelected(null)}></button>
               </div>
               <div className="card-body small" style={{ overflowY: 'auto', maxHeight: '60vh' }}>
@@ -300,7 +533,7 @@ export default function Feature9_Warehouse() {
                 <div className="mb-3">
                   <div className="text-muted mb-1">📍 Địa chỉ</div>
                   {isMasked(selected)
-                    ? <div className="alert alert-warning py-2 px-2"><i className="bi bi-shield-lock me-1"></i>Bị ẩn — BR-013 (tài sản khác POS)</div>
+                    ? <div className="alert alert-warning py-2 px-2"><i className="bi bi-shield-lock me-1"></i>Địa chỉ được ẩn (tài sản ngoài phạm vi chi nhánh)</div>
                     : <div className="fw-semibold">{selected.address}</div>
                   }
                 </div>
@@ -372,11 +605,21 @@ export default function Feature9_Warehouse() {
                   <div className="text-muted mb-1">📊 Trạng thái 2 lớp</div>
                   <div className="d-flex gap-2 align-items-center mb-1">
                     <span className="text-muted">Level 1:</span>
-                    <span className={`badge bg-${lv1Color[selected.level1_status] || 'secondary'}`}>{selected.level1_status}</span>
+                    <span className={statusBadgeClass(lv1Color[selected.level1_status])}>{selected.level1_status}</span>
                   </div>
-                  <div className="d-flex gap-2 align-items-center">
+                  <div className="d-flex gap-2 align-items-center flex-wrap">
                     <span className="text-muted">Level 2:</span>
-                    <span className={`badge bg-${lv2Color[selected.level2_status] || 'secondary'}`}>{selected.level2_status}</span>
+                    {(() => {
+                      const lv2 = effectiveLevel2Status(selected, listings);
+                      return (
+                        <>
+                          <span className={statusBadgeClass(lv2Color[lv2])}>{lv2}</span>
+                          {lv2 !== (selected.level2_status || selected.statusLv2) && (
+                            <span className="small text-muted">(DB: {selected.level2_status || selected.statusLv2 || '—'})</span>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -388,7 +631,8 @@ export default function Feature9_Warehouse() {
                       ['Loại GD', selected.type], ['Diện tích', `${selected.area}m²`],
                       ['Phòng ngủ', selected.bedrooms], ['Phòng tắm', selected.bathrooms],
                       ['Hướng', selected.direction], ['Pháp lý', selected.legalStatus],
-                      ['Giá', selected.price_display], ['Kho', selected.warehouse_type || '—'],
+                      ['Nội thất', selected.interior || selected.furniture || '—'],
+                      ['Giá', formatPropertyPriceDisplay(ROLE, selected, POS_ID, POS_NAME)], ['Kho', selected.warehouse_type || '—'],
                     ].map(([k, v]) => (
                       <div key={k} className="col-6">
                         <div className="bg-light rounded p-2">
@@ -407,7 +651,9 @@ export default function Feature9_Warehouse() {
                     <div><span className="text-muted">Tạo bởi:</span> <strong>{selected.createdBy}</strong></div>
                     <div><span className="text-muted">POS:</span> <strong>{selected.pos_name}</strong></div>
                     {selected.manager_name && <div><span className="text-muted">Quản lý TS:</span> {selected.manager_name}</div>}
-                    {selected.approvedBy && <div><span className="text-muted">Duyệt bởi:</span> {selected.approvedBy}</div>}
+                    {selected.approvedBy && <div><span className="text-muted">Duyệt kho:</span> {selected.approvedBy}</div>}
+                    {selected.mktApproveBy && <div><span className="text-muted">Duyệt Niêm yết (MKT):</span> <span className="fw-semibold text-primary">{selected.mktApproveBy}</span></div>}
+                    {selected.rejectedBy && <div><span className="text-muted">Từ chối bởi:</span> <span className="text-danger fw-semibold">{selected.rejectedBy}</span></div>}
                   </div>
                 </div>
 
@@ -417,8 +663,11 @@ export default function Feature9_Warehouse() {
                   {[
                     { date: selected.createdAt, label: 'Tạo hồ sơ', icon: 'bi-plus-circle', color: '#1976d2' },
                     selected.approvedAt && { date: selected.approvedAt, label: `Duyệt kho bởi ${selected.approvedBy || '—'}`, icon: 'bi-check-circle', color: '#388e3c' },
-                    selected.unsourceRequestedAt && { date: selected.unsourceRequestedAt, label: 'Yêu cầu gỡ nguồn', icon: 'bi-exclamation-circle', color: '#f57c00' },
-                    selected.unsourceApprovedAt && { date: selected.unsourceApprovedAt, label: 'Gỡ nguồn được duyệt', icon: 'bi-x-circle', color: '#616161' },
+                    (selected.mktApproveAt || (selected.mktApproveBy && selected.updatedAt)) && { date: selected.mktApproveAt || selected.updatedAt, label: `Duyệt Niêm yết bởi ${selected.mktApproveBy || 'MKT'}`, icon: 'bi-megaphone-fill', color: '#0288d1' },
+                    selected.rejectedAt && { date: selected.rejectedAt, label: `Từ chối kho bởi ${selected.rejectedBy || '—'}`, icon: 'bi-x-octagon', color: '#d32f2f' },
+                    selected.unsourceRequestedAt && { date: selected.unsourceRequestedAt, label: `Yêu cầu gỡ nguồn bởi ${selected.unsourceRequestedBy || '—'}`, icon: 'bi-exclamation-circle', color: '#f57c00' },
+                    selected.unsourceApprovedAt && { date: selected.unsourceApprovedAt, label: `Duyệt gỡ nguồn bởi ${selected.unsourceApprovedBy || '—'}`, icon: 'bi-x-circle', color: '#616161' },
+                    selected.unsourceRejectedAt && { date: selected.unsourceRejectedAt, label: `Từ chối gỡ nguồn bởi ${selected.unsourceRejectedBy || '—'}`, icon: 'bi-arrow-counterclockwise', color: '#d32f2f' },
                   ].filter(Boolean).sort((a, b) => new Date(a.date) - new Date(b.date)).map((ev, i) => (
                     <div key={i} className="d-flex align-items-start gap-2 mb-2">
                       <i className={`bi ${ev.icon} mt-1`} style={{ color: ev.color }}></i>
@@ -448,7 +697,7 @@ export default function Feature9_Warehouse() {
                     if (!entries.length) {
                       return (
                         <div className="text-muted small fst-italic">
-                          Chưa có dòng log gắn <code>{formatPropertyId(selected.id)}</code> (tạo thao tác trên F2/F3/F8… để có lịch sử).
+                          Chưa có dòng log gắn <code>{formatPropertyId(selected.propertyCode || selected.id)}</code> (tạo thao tác trên F2/F3/F8… để có lịch sử).
                         </div>
                       );
                     }
@@ -456,7 +705,19 @@ export default function Feature9_Warehouse() {
                       <ul className="list-unstyled mb-0 small" style={{ maxHeight: 260, overflowY: 'auto' }}>
                         {entries.slice(0, 50).map((row) => (
                           <li key={row.id || `${row.timestamp}-${row.action}`} className="mb-2 pb-2 border-bottom border-light-subtle">
-                            <div className="fw-semibold" style={{ fontSize: 12 }}>{row.action}</div>
+                            <div className="fw-semibold" style={{ fontSize: 12 }}>
+                              {(() => {
+                                let s = row.action || '';
+                                s = s.replace(/TS (PIS_[a-zA-Z0-9_]+|P[0-9]+)/g, (m, p1) => `TS ${formatPropertyId(p1)}`);
+                                s = s.replace(/— ([a-zA-Z0-9_-]+)(\s*[-·]\s*|\s*\()/g, (m, rawId, suffix) => {
+                                  if (rawId.startsWith('LT-') || rawId.startsWith('LS-')) return m;
+                                  const lst = listings.find((x) => x.id === rawId);
+                                  if (lst) return `— ${formatListingId(lst.listingCode || lst.id)}${suffix}`;
+                                  return m;
+                                });
+                                return s;
+                              })()}
+                            </div>
                             <div className="text-muted" style={{ fontSize: 11 }}>
                               {(row.user || '—')} · {row.timestamp ? new Date(row.timestamp).toLocaleString('vi-VN') : '—'}
                             </div>

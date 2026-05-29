@@ -12,7 +12,8 @@ export const ALL_PERMISSIONS = [
   { code: 'PROPERTY_CREATE',                  group: 'Kho hàng',         label: 'Tạo mới tài sản',                 scope: 'OWN_POS' },
   { code: 'PROPERTY_VIEW_ADDRESS_OWN_POS',    group: 'Dữ liệu nhạy cảm', label: 'Xem địa chỉ POS mình',           scope: 'OWN_POS' },
   { code: 'PROPERTY_VIEW_ADDRESS_OTHER_POS',  group: 'Dữ liệu nhạy cảm', label: 'Xem địa chỉ POS khác',           scope: 'OTHER_POS',  masking: 'FULL_MASK' },
-  { code: 'PROPERTY_VIEW_PRICE',              group: 'Dữ liệu nhạy cảm', label: 'Xem giá tài sản',                scope: 'ALL' },
+  { code: 'PROPERTY_VIEW_PRICE',              group: 'Dữ liệu nhạy cảm', label: 'Xem giá tài sản (POS mình)',     scope: 'OWN_POS' },
+  { code: 'PROPERTY_VIEW_PRICE_OTHER_POS',    group: 'Dữ liệu nhạy cảm', label: 'Xem giá POS khác',               scope: 'OTHER_POS',  masking: 'FULL_MASK' },
   { code: 'PROPERTY_EXPORT',                  group: 'Export',            label: 'Xuất dữ liệu tài sản (CSV)',     scope: 'FILTER_SCOPE', masking: 'MASK_APPLY' },
   // --- Nhóm: Niêm yết ---
   { code: 'LISTING_CREATE',                   group: 'Niêm yết',         label: 'Soạn tin đăng',                   scope: 'OWN_POS' },
@@ -30,6 +31,8 @@ export const ALL_PERMISSIONS = [
   // --- Nhóm: Audit ---
   { code: 'AUDIT_VIEW',                       group: 'Audit',            label: 'Xem Audit Trail',                scope: 'ALL' },
   { code: 'AUDIT_EXPORT',                     group: 'Audit',            label: 'Xuất Audit Log (CSV)',           scope: 'ALL' },
+  // --- Nhóm: Báo cáo ---
+  { code: 'DASHBOARD_VIEW',                   group: 'Báo cáo',          label: 'Xem Dashboard tổng hợp (F12)',   scope: 'FILTER_SCOPE' },
 ];
 
 // Cấu hình phân quyền MẶC ĐỊNH theo Role
@@ -42,6 +45,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'PROPERTY_VIEW_PRICE',
     'PROPERTY_UNSOURCE_APPROVE',
     'LISTING_UNLIST_APPROVE',
+    'DASHBOARD_VIEW',
   ],
   sales: [
     'PROPERTY_VIEW_LIST',
@@ -51,13 +55,16 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'LISTING_CREATE',
     'LISTING_UNLIST_REQUEST',
     'PROPERTY_UNSOURCE_REQUEST',
+    'DASHBOARD_VIEW',
   ],
   marketing: [
     'PROPERTY_VIEW_LIST',
     'PROPERTY_VIEW_ADDRESS_OWN_POS',
     'PROPERTY_VIEW_PRICE',
+    'PROPERTY_VIEW_PRICE_OTHER_POS',
     'LISTING_APPROVE',
     'LISTING_UNLIST_APPROVE',
+    'DASHBOARD_VIEW',
   ],
 };
 
@@ -66,13 +73,30 @@ const LS_KEY = 'ihouzz_permissions';
 
 // ===== API FUNCTIONS =====
 
-/** Lấy toàn bộ cấu hình phân quyền hiện tại */
+/** Lấy toàn bộ cấu hình phân quyền hiện tại (luôn gộp với DEFAULT — tránh F10 lưu thiếu quyền baseline). */
 export function getPermissions() {
+  const merged = Object.fromEntries(
+    Object.entries(DEFAULT_ROLE_PERMISSIONS).map(([role, codes]) => [role, [...codes]]),
+  );
   try {
     const stored = localStorage.getItem(LS_KEY);
-    if (stored) return JSON.parse(stored);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed === 'object') {
+        Object.keys(parsed).forEach((role) => {
+          if (!Array.isArray(parsed[role])) return;
+          merged[role] = [...new Set([...(merged[role] || []), ...parsed[role]])];
+        });
+      }
+    }
   } catch (_) {}
-  return DEFAULT_ROLE_PERMISSIONS;
+  return merged;
+}
+
+/** Xem Dashboard (F12) — Admin + role có DASHBOARD_VIEW trong ma trận (đã gộp DEFAULT). */
+export function canViewDashboard(role) {
+  if (role === 'admin') return true;
+  return hasPermission(role, 'DASHBOARD_VIEW');
 }
 
 /** Lưu cấu hình phân quyền mới */
@@ -120,4 +144,33 @@ export function shouldMaskAddress(role, property, currentPosId, currentPosName) 
   if (hasPermission(role, 'PROPERTY_VIEW_ADDRESS_OTHER_POS')) return false;
   if (!property.pos_id && !property.pos_name) return false;
   return true;
+}
+
+/** Nhãn hiển thị khi che giá (đồng bộ masking địa chỉ). */
+export const MASKED_PRICE_TEXT = '***';
+
+/**
+ * Có nên che giá không — cùng mô hình shouldMaskAddress (BR masking giá POS khác).
+ * - Cùng POS với user → không che.
+ * - Có quyền PROPERTY_VIEW_PRICE_OTHER_POS → không che.
+ * - Khác POS và không có quyền → che.
+ */
+export function shouldMaskPrice(role, property, currentPosId, currentPosName) {
+  if (role === 'admin') return false;
+  if (isSamePosAsActor(property, currentPosId, currentPosName)) return false;
+  if (hasPermission(role, 'PROPERTY_VIEW_PRICE_OTHER_POS')) return false;
+  if (!property.pos_id && !property.pos_name) return false;
+  return true;
+}
+
+/** Giá hiển thị trên UI/CSV — tôn trọng shouldMaskPrice. */
+export function formatPropertyPriceDisplay(role, property, currentPosId, currentPosName) {
+  if (!property) return '—';
+  if (shouldMaskPrice(role, property, currentPosId, currentPosName)) return MASKED_PRICE_TEXT;
+  if (property.price_display != null && String(property.price_display).trim() !== '') {
+    return String(property.price_display);
+  }
+  const n = Number(property.price);
+  if (!Number.isFinite(n)) return '—';
+  return `${n.toLocaleString('en-US')} ${property.priceUnit || 'VNĐ'}`;
 }

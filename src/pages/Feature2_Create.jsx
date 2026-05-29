@@ -1,10 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import SmartAddress from '../components/SmartAddress';
 import { DEFAULT_PROVINCE } from '../data/hcmAdminUnits';
 import { readFileAsDataURL, MAX_IMAGE_BYTES } from '../utils/mediaLibraryApi';
-import { propertySequenceNumber } from '../utils/listingWorkflow';
+import { propertySequenceNumber, formatPropertyId, postEntityAudit, AUDIT_ACTION_TYPE } from '../utils/listingWorkflow';
+import {
+  MY_PROPS_STATUS_ALL,
+  MY_PROPS_STATUS_OPTIONS,
+  filterMyPropsForTab,
+  formatMyPropsPriceDisplay,
+  normalizeJsonServerList,
+  warehouseLabel,
+} from '../utils/myPropsTab';
 import {
   UPDATE_REQUEST_PENDING,
   diffPropertyUpdate,
@@ -13,7 +22,23 @@ import {
   shrinkPendingForJsonServer,
   propertyHasLiveListingForUpdateLock,
   initialPendingUpdateFormState,
+  buildPriceDisplayFromFields,
 } from '../utils/propertyUpdateWorkflow';
+import { formatPropertyPriceDisplay } from '../utils/permissions';
+import { normalizeUserId, sameUserId } from '../utils/userId';
+import {
+  buildFullAddress,
+  validatePropertySubmit,
+  findDuplicateProperties,
+  propertyToAddressFields,
+} from '../utils/propertyCreateWorkflow';
+import AppToast from '../components/AppToast';
+import { useAppToast } from '../hooks/useAppToast';
+import {
+  matchesNotificationRecipient,
+  isSalesInboxNotification,
+  isRejectNotification,
+} from '../utils/approvalNotifications';
 
 function Feature2_Create() {
   const navigate = useNavigate();
@@ -23,6 +48,10 @@ function Feature2_Create() {
   const currentUser = userStr ? JSON.parse(userStr) : {};
   const rawRole = currentUser.role || 'sales';
   const ROLE = rawRole === 'pos' ? 'pos_manager' : rawRole === 'mkt' ? 'marketing' : rawRole;
+  const rawPid = currentUser.pos_id;
+  const POS_ID_NUM = rawPid === '' || rawPid == null ? null : Number(rawPid);
+  const POS_ID = Number.isNaN(POS_ID_NUM) ? null : POS_ID_NUM;
+  const POS_NAME = currentUser.pos_name || '';
 
   // managerName mặc định = người tạo, Admin có thể đổi
   const [managerName, setManagerName] = (useState)(currentUser.name || '');
@@ -113,10 +142,15 @@ function Feature2_Create() {
   };
 
   const [dupStatus, setDupStatus] = useState(null); // null | 'checking' | {dup} | 'clear'
+  const [dupAcknowledged, setDupAcknowledged] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [pendingSubmitPropertyId, setPendingSubmitPropertyId] = useState(null);
   const [showBranchModal, setShowBranchModal] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState(null);
   const [dupInfo, setDupInfo] = useState(null);
+  /** Nhánh 1 (eSign): theo dõi LS- vừa gửi link ký KH — AC2-004 / Screen 2.4.4 */
+  const [esignFlowPropId, setEsignFlowPropId] = useState(null);
+  const [showEsignFlowModal, setShowEsignFlowModal] = useState(false);
 
   const [mainTab, setMainTab] = useState('create');
   const [properties, setProperties] = useState([]);
@@ -127,27 +161,141 @@ function Feature2_Create() {
   const [updateNote, setUpdateNote] = useState('');
   const [updateExtraFiles, setUpdateExtraFiles] = useState([]);
 
-  const USER_ID = currentUser.id || '';
+  // Draft completion states
+  const [showDraftModal, setShowDraftModal] = useState(false);
+  const [draftTarget, setDraftTarget] = useState(null);
+  const [draftEditForm, setDraftEditForm] = useState(null);
+  const [draftSubmitting, setDraftSubmitting] = useState(false);
+  const [draftExtraFiles, setDraftExtraFiles] = useState([]);
+
+  const USER_ID = normalizeUserId(currentUser.id) ?? '';
+
+  const [myPropsSearch, setMyPropsSearch] = useState('');
+  const [myPropsStatusFilter, setMyPropsStatusFilter] = useState(MY_PROPS_STATUS_ALL);
+  const [myPropsTypeFilter, setMyPropsTypeFilter] = useState('all');
+  const [includeRemovedMyProps, setIncludeRemovedMyProps] = useState(false);
+  const { toast, showToast, dismissToast } = useAppToast(12000);
+  const shownNotifIdsRef = useRef(new Set());
 
   useEffect(() => {
     if (mainTab !== 'myprops') return;
     (async () => {
       try {
         const [resP, resL] = await Promise.all([
-          axios.get('http://localhost:5000/properties'),
-          axios.get('http://localhost:5000/listings'),
+          axios.get(`\${API_BASE_URL}/properties`),
+          axios.get(`\${API_BASE_URL}/listings`),
         ]);
-        setProperties(resP.data);
-        setListings(resL.data);
+        setProperties(normalizeJsonServerList(resP.data));
+        setListings(normalizeJsonServerList(resL.data));
       } catch (e) {
         console.error(e);
       }
     })();
   }, [mainTab]);
 
-  const myPropsList = USER_ID
-    ? properties.filter((p) => p.createdBy_id === USER_ID)
-    : properties;
+  const myPropsListRaw = useMemo(
+    () => (USER_ID ? properties.filter((p) => sameUserId(p.createdBy_id, USER_ID)) : properties),
+    [properties, USER_ID],
+  );
+
+  const esignFlowProperty = useMemo(() => {
+    if (!esignFlowPropId) return null;
+    return properties.find((p) => p.id === esignFlowPropId || p.propertyCode === esignFlowPropId) || null;
+  }, [properties, esignFlowPropId]);
+
+  const reloadPropertiesAndListings = async () => {
+    const [resP, resL] = await Promise.all([
+      axios.get(`\${API_BASE_URL}/properties`),
+      axios.get(`\${API_BASE_URL}/listings`),
+    ]);
+    setProperties(normalizeJsonServerList(resP.data));
+    setListings(normalizeJsonServerList(resL.data));
+  };
+
+  const propertyDisplayCode = (p) => formatPropertyId(p?.propertyCode || p?.id || '');
+
+  const handleConfirmKhSigned = async (prop) => {
+    const pid = prop?.id || prop;
+    const row = typeof prop === 'object' ? prop : properties.find((p) => p.id === pid);
+    if (!row) return;
+    if (!window.confirm(`Xác nhận Khách hàng đã ký HĐMG cho ${propertyDisplayCode(row)}?`)) return;
+    const now = new Date().toISOString();
+    try {
+      await axios.patch(`\${API_BASE_URL}/properties/${encodeURIComponent(row.id)}`, {
+        level1_status: 'KH đã ký',
+        statusLv1: 'KH đã ký',
+        kh_signed_at: now,
+        updatedAt: now,
+      });
+      await postEntityAudit({
+        action: `[F2] Nhánh 1 — Xác nhận KH đã ký ${propertyDisplayCode(row)}`,
+        actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_ESIGN_CONFIRMED,
+        entityId: row.id,
+        property_id: row.propertyCode || row.id,
+        user: currentUser.name || 'Sales (F2)',
+        user_id: USER_ID,
+        old_status: row.level1_status || row.statusLv1,
+        new_status: 'KH đã ký',
+      });
+      await reloadPropertiesAndListings();
+      setEsignFlowPropId(row.id);
+      alert(`✅ ${propertyDisplayCode(row)}: trạng thái «KH đã ký». Bạn có thể bấm «Gửi duyệt POS».`);
+    } catch {
+      alert('Lỗi cập nhật trạng thái. Kiểm tra API port 5000.');
+    }
+  };
+
+  const handleSendEsignToPos = async (prop) => {
+    const row = typeof prop === 'object' ? prop : properties.find((p) => p.id === prop);
+    if (!row) return;
+    if (row.level1_status !== 'KH đã ký') {
+      alert('Chỉ gửi POS sau khi trạng thái là «KH đã ký».');
+      return;
+    }
+    const now = new Date().toISOString();
+    try {
+      await axios.patch(`\${API_BASE_URL}/properties/${encodeURIComponent(row.id)}`, {
+        level1_status: 'Chờ POS duyệt',
+        statusLv1: 'Chờ POS duyệt',
+        submitted_to_pos_at: now,
+        updatedAt: now,
+      });
+      await postEntityAudit({
+        action: `[F2] Nhánh 1 — Gửi duyệt POS ${propertyDisplayCode(row)}`,
+        actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_SEND_POS_ESIGN,
+        entityId: row.id,
+        property_id: row.propertyCode || row.id,
+        user: currentUser.name || 'Sales (F2)',
+        user_id: USER_ID,
+        old_status: 'KH đã ký',
+        new_status: 'Chờ POS duyệt',
+      });
+      await axios.post(`\${API_BASE_URL}/notifications`, {
+        propertyId: row.propertyCode || row.id,
+        recipient: row.pos_manager || 'GĐ POS',
+        message: `Tài sản ${propertyDisplayCode(row)} (KH đã ký HĐMG) chờ phê duyệt nhập kho.`,
+        type: 'info',
+        createdAt: now,
+        isRead: false,
+      });
+      await reloadPropertiesAndListings();
+      setShowEsignFlowModal(false);
+      setEsignFlowPropId(null);
+      alert(`✅ Đã gửi ${propertyDisplayCode(row)} tới Giám đốc POS (Chờ POS duyệt).`);
+    } catch {
+      alert('Lỗi khi gửi duyệt POS.');
+    }
+  };
+
+  const myPropsListFiltered = useMemo(() => {
+    const list = filterMyPropsForTab(myPropsListRaw, {
+      statusKey: myPropsStatusFilter,
+      hideRemovedSource: !includeRemovedMyProps,
+      search: myPropsSearch,
+    });
+    if (myPropsTypeFilter === 'all') return list;
+    return list.filter((p) => p.type === myPropsTypeFilter);
+  }, [myPropsListRaw, myPropsStatusFilter, includeRemovedMyProps, myPropsSearch, myPropsTypeFilter]);
 
   const openUpdateRequestModal = (p) => {
     setUpdateTarget(p);
@@ -221,23 +369,29 @@ function Feature2_Create() {
     );
     const changes = diffPropertyUpdate(updateTarget, pendingToSend);
     try {
-      await axios.patch(`http://localhost:5000/properties/${encodeURIComponent(updateTarget.id)}`, {
+      await axios.patch(`\${API_BASE_URL}/properties/${encodeURIComponent(updateTarget.id)}`, {
         ...meta,
         pending_update_payload: pendingToSend,
       });
-      await axios.post('http://localhost:5000/logs', {
-        timestamp: new Date().toISOString(),
+      await postEntityAudit({
         action: '[F2] Đầu chủ gửi yêu cầu phê duyệt cập nhật tài sản (chờ GĐ POS)',
+        actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_UPDATE_REQUEST,
         entityId: updateTarget.id,
+        property_id: updateTarget.propertyCode || updateTarget.id,
         user: currentUser.name || 'Đầu chủ (F2)',
-        changesPreview: changes.map((c) => c.field),
+        user_id: USER_ID,
+        modified_fields:
+          changes.length > 0
+            ? Object.fromEntries(changes.map((c) => [String(c.field), { old: c.old, new: c.new }]))
+            : undefined,
+        extra: { changesPreview: changes.map((c) => c.field) },
       });
       setShowUpdateModal(false);
       setUpdateTarget(null);
       setUpdateForm(null);
       setUpdateExtraFiles([]);
-      const res = await axios.get('http://localhost:5000/properties');
-      setProperties(res.data);
+      const res = await axios.get(`\${API_BASE_URL}/properties`);
+      setProperties(normalizeJsonServerList(res.data));
       alert(
         didSubstituteImages
           ? '✅ Đã gửi yêu cầu cập nhật. (Demo: json-server giới hạn ~100KB/request — ảnh tải lên được thay bằng URL minh họa.)'
@@ -254,95 +408,468 @@ function Feature2_Create() {
     }
   };
 
-  const fullAddress = [address.houseNumber, address.street && `đường ${address.street}`,
-    address.ward, address.district, address.province].filter(Boolean).join(', ');
+  const openDraftModal = (p) => {
+    setDraftTarget(p);
+    setDupAcknowledged(false);
+    setDraftExtraFiles([]);
+    setDraftEditForm({
+      type: p.type || 'Bán',
+      propertyType: p.propertyType || 'Căn hộ chung cư',
+      area: p.area || '',
+      price: p.price ? Number(p.price).toLocaleString('en-US') : '',
+      priceUnit: p.priceUnit || 'tỷ VNĐ',
+      direction: p.direction || '',
+      condition: p.condition || '',
+      source: p.source || '',
+      furniture: p.furniture || '',
+      floor: p.floor || '',
+      bedrooms: p.bedrooms || '',
+      bathrooms: p.bathrooms || '',
+      description: p.description || '',
+      legalStatus: p.legalStatus || p.legal || 'Sổ đỏ',
+      addressFields: propertyToAddressFields(p),
+      images: Array.isArray(p.images) ? p.images.filter(Boolean) : [],
+    });
+    setShowDraftModal(true);
+  };
 
-  // Check trùng khi blur khỏi số nhà + đường
-  const handleBlurDupCheck = async () => {
-    if (formData.type !== 'Bán' || !address.houseNumber || !address.street) return;
+  const countDraftImages = (form, extraFiles) => {
+    const existing = (form?.images || []).filter(Boolean).length;
+    const pending = (extraFiles || []).filter((f) => f.type.startsWith('image/')).length;
+    return existing + pending;
+  };
+
+  const handleDraftExtraUpload = (e) => {
+    const sel = Array.from(e.target.files || []);
+    e.target.value = '';
+    for (const file of sel) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert(`File "${file.name}" vượt quá 10MB.`);
+        return;
+      }
+      const isImage =
+        file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(file.name || '');
+      if (!isImage) {
+        alert(`"${file.name}" không phải ảnh hợp lệ. Chỉ chấp nhận JPG, PNG, WebP.`);
+        return;
+      }
+    }
+    setDraftExtraFiles((prev) => [...prev, ...sel]);
+  };
+
+  const resolveDraftImages = async (propertyId, form, extraFiles) => {
+    const kept = (form?.images || []).filter(Boolean);
+    const imgNew = (extraFiles || []).filter((f) => f.type.startsWith('image/'));
+    const newUrls = [];
+    for (let i = 0; i < imgNew.length; i++) {
+      try {
+        newUrls.push(await readFileAsDataURL(imgNew[i], MAX_IMAGE_BYTES));
+      } catch {
+        newUrls.push(
+          `https://picsum.photos/seed/draft-${encodeURIComponent(propertyId)}-${Date.now()}-${i}/1200/800`,
+        );
+      }
+    }
+    return [...kept, ...newUrls].slice(0, 20);
+  };
+
+  const openDraftModalRef = useRef(null);
+  openDraftModalRef.current = openDraftModal;
+
+  useEffect(() => {
+    if (ROLE !== 'sales') return undefined;
+    let cancelled = false;
+
+    const openFromNotif = async (propId, openForEdit) => {
+      setMainTab('myprops');
+      try {
+        const res = await axios.get(`\${API_BASE_URL}/properties`);
+        if (cancelled) return;
+        const list = normalizeJsonServerList(res.data);
+        setProperties(list);
+        const prop = list.find((p) => p.id === propId || p.propertyCode === propId);
+        if (prop && openForEdit) {
+          openDraftModalRef.current?.(prop);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    (async () => {
+      try {
+        const res = await axios.get(`\${API_BASE_URL}/notifications`);
+        if (cancelled) return;
+        const list = normalizeJsonServerList(res.data);
+        const unread = list
+          .filter(
+            (n) =>
+              !n.isRead &&
+              matchesNotificationRecipient(n, currentUser.name, currentUser.email) &&
+              isSalesInboxNotification(n) &&
+              n.id &&
+              !shownNotifIdsRef.current.has(n.id),
+          )
+          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+        for (const n of unread) {
+          if (cancelled) return;
+          shownNotifIdsRef.current.add(n.id);
+          const isReject = isRejectNotification(n);
+          showToast({
+            msg: n.message,
+            type: n.type === 'danger' ? 'danger' : 'success',
+            actionLabel: 'Mở hồ sơ',
+            onAction: () => openFromNotif(n.propertyId, isReject),
+            durationMs: 14000,
+          });
+          try {
+            await axios.patch(`\${API_BASE_URL}/notifications/${encodeURIComponent(n.id)}`, {
+              isRead: true,
+            });
+          } catch (patchErr) {
+            console.warn('Không đánh dấu đã đọc notification:', patchErr);
+          }
+        }
+      } catch (e) {
+        console.error('pollApprovalNotifications', e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ROLE, currentUser.name, currentUser.email, mainTab, showToast]);
+
+  const fullAddress = useMemo(() => buildFullAddress(address), [address]);
+
+  const fetchDuplicateMatches = async (addr, listingType, excludeId) => {
+    const res = await axios.get(`\${API_BASE_URL}/properties`);
+    return findDuplicateProperties(res.data, {
+      type: listingType,
+      address: addr,
+      excludeId,
+    });
+  };
+
+  const requireDuplicateGate = async (addr, listingType, excludeId) => {
+    if (listingType !== 'Bán') return true;
     setDupStatus('checking');
     try {
-      const res = await axios.get('http://localhost:5000/properties');
-      const q = `${address.houseNumber} ${address.street}`.toLowerCase();
-      const dups = res.data.filter(p =>
-        p.type === 'Bán' && p.address && p.address.toLowerCase().includes(q)
-      );
-      if (dups.length > 0) {
+      const dups = await fetchDuplicateMatches(addr, listingType, excludeId);
+      if (dups.length > 0 && !dupAcknowledged) {
         setDupInfo(dups[0]);
         setDupStatus('dup');
         setShowDuplicateModal(true);
-      } else {
-        setDupStatus('clear');
+        return false;
       }
+      setDupStatus(dups.length > 0 ? 'dup' : 'clear');
+      return true;
     } catch {
       setDupStatus(null);
+      alert('Không kiểm tra được trùng địa chỉ. Vui lòng thử lại.');
+      return false;
     }
   };
 
-  const handleContinueToBranch = (e) => {
-    e.preventDefault();
-    if (!address.district || !address.ward || !address.houseNumber || !address.street) {
-      alert('Vui lòng điền đầy đủ thông tin địa chỉ (Quận, Phường, Số nhà, Tên đường)');
-      return;
-    }
-    if (!formData.area || !formData.price) {
-      alert('Vui lòng điền Diện tích và Giá (ERR-F2-001)');
-      return;
-    }
-    const imageFiles = files.filter((f) => f.type.startsWith('image/'));
-    if (imageFiles.length < 1) {
-      alert('Bắt buộc đính kèm ít nhất 1 ảnh (JPG/PNG/WebP) minh họa tài sản trước khi gửi duyệt.');
+  const handleBlurDupCheck = async () => {
+    if (formData.type !== 'Bán') return;
+    setDupAcknowledged(false);
+    await requireDuplicateGate(address, formData.type, pendingSubmitPropertyId);
+  };
+
+  const handleCompleteDraft = async (submitToPOS = false) => {
+    if (!draftTarget || !draftEditForm) return;
+    const draftAddr = draftEditForm.addressFields || propertyToAddressFields(draftTarget);
+    const draftImageCount = countDraftImages(draftEditForm, draftExtraFiles);
+
+    if (submitToPOS) {
+      const v = validatePropertySubmit({
+        address: draftAddr,
+        formData: draftEditForm,
+        imageCount: draftImageCount,
+        requireImages: true,
+      });
+      if (!v.ok) {
+        alert(v.message);
+        return;
+      }
+      const dupOk = await requireDuplicateGate(draftAddr, draftEditForm.type, draftTarget.id);
+      if (!dupOk) return;
+
+      setDraftSubmitting(true);
+      try {
+        const mergedImages = await resolveDraftImages(draftTarget.id, draftEditForm, draftExtraFiles);
+        const now = new Date().toISOString();
+        await axios.patch(`\${API_BASE_URL}/properties/${encodeURIComponent(draftTarget.id)}`, {
+          type: draftEditForm.type,
+          propertyType: draftEditForm.propertyType,
+          area: Number(String(draftEditForm.area).replace(/,/g, '')) || 0,
+          price: Number(String(draftEditForm.price).replace(/,/g, '')) || 0,
+          priceUnit: draftEditForm.priceUnit,
+          direction: draftEditForm.direction,
+          condition: draftEditForm.condition,
+          source: draftEditForm.source,
+          furniture: draftEditForm.furniture,
+          floor: draftEditForm.floor ? parseInt(draftEditForm.floor, 10) : null,
+          bedrooms: Number(draftEditForm.bedrooms) || 0,
+          bathrooms: Number(draftEditForm.bathrooms) || 0,
+          description: draftEditForm.description,
+          legalStatus: draftEditForm.legalStatus,
+          address: buildFullAddress(draftAddr) || draftTarget.address,
+          district: draftAddr.district || '',
+          ward: draftAddr.ward || '',
+          houseNumber: draftAddr.houseNumber || '',
+          street: draftAddr.street || '',
+          province: draftAddr.province || DEFAULT_PROVINCE,
+          futureWard: draftAddr.futureWard || null,
+          images: mergedImages,
+          updatedAt: now,
+        });
+        await reloadPropertiesAndListings();
+      } catch {
+        alert('Lỗi lưu ảnh / hồ sơ trước khi gửi duyệt. Kiểm tra API port 5000.');
+        setDraftSubmitting(false);
+        return;
+      }
+      setDraftSubmitting(false);
+
+      setPendingSubmitPropertyId(draftTarget.id);
+      setAddress(draftAddr);
+      setFiles([]);
+      setFormData((prev) => ({
+        ...prev,
+        type: draftEditForm.type,
+        propertyType: draftEditForm.propertyType,
+        area: draftEditForm.area,
+        price: draftEditForm.price,
+        priceUnit: draftEditForm.priceUnit,
+        direction: draftEditForm.direction,
+        condition: draftEditForm.condition,
+        source: draftEditForm.source,
+        furniture: draftEditForm.furniture,
+        floor: draftEditForm.floor,
+        bedrooms: draftEditForm.bedrooms,
+        bathrooms: draftEditForm.bathrooms,
+        description: draftEditForm.description,
+        legalStatus: draftEditForm.legalStatus,
+      }));
+      setShowDraftModal(false);
+      setDraftTarget(null);
+      setDraftEditForm(null);
+      setDraftExtraFiles([]);
+      setShowBranchModal(true);
       return;
     }
 
-    // Kiểm tra giá thấp (TC_F2_12)
+    if (!draftEditForm.area && !draftEditForm.price && !buildFullAddress(draftAddr)) {
+      alert('Vui lòng nhập ít nhất một số thông tin (địa chỉ, diện tích hoặc giá) trước khi lưu nháp.');
+      return;
+    }
+
+    setDraftSubmitting(true);
+    const now = new Date().toISOString();
+    let mergedImages = (draftEditForm.images || []).filter(Boolean);
+    if (draftExtraFiles.length > 0) {
+      try {
+        mergedImages = await resolveDraftImages(draftTarget.id, draftEditForm, draftExtraFiles);
+      } catch (err) {
+        alert(err?.message || 'Không xử lý được file ảnh.');
+        setDraftSubmitting(false);
+        return;
+      }
+    }
+    const payload = {
+      type: draftEditForm.type,
+      propertyType: draftEditForm.propertyType,
+      area: Number(String(draftEditForm.area).replace(/,/g, '')) || 0,
+      price: Number(String(draftEditForm.price).replace(/,/g, '')) || 0,
+      priceUnit: draftEditForm.priceUnit,
+      direction: draftEditForm.direction,
+      condition: draftEditForm.condition,
+      source: draftEditForm.source,
+      furniture: draftEditForm.furniture,
+      floor: draftEditForm.floor ? parseInt(draftEditForm.floor, 10) : null,
+      bedrooms: Number(draftEditForm.bedrooms) || 0,
+      bathrooms: Number(draftEditForm.bathrooms) || 0,
+      description: draftEditForm.description,
+      legalStatus: draftEditForm.legalStatus,
+      address: buildFullAddress(draftAddr) || draftTarget.address,
+      district: draftAddr.district || '',
+      ward: draftAddr.ward || '',
+      houseNumber: draftAddr.houseNumber || '',
+      street: draftAddr.street || '',
+      province: draftAddr.province || DEFAULT_PROVINCE,
+      futureWard: draftAddr.futureWard || null,
+      images: mergedImages,
+      level1_status: 'Mới',
+      is_draft: true,
+      updatedAt: now,
+    };
+    try {
+      await axios.patch(`\${API_BASE_URL}/properties/${encodeURIComponent(draftTarget.id)}`, payload);
+      await postEntityAudit({
+        action: `[F2] Đầu chủ cập nhật nháp ${draftTarget.id}`,
+        actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_DRAFT_UPDATE,
+        entityId: draftTarget.id,
+        property_id: draftTarget.propertyCode || draftTarget.id,
+        user: currentUser.name || 'Sales (F2)',
+        user_id: USER_ID,
+      });
+      const res = await axios.get(`\${API_BASE_URL}/properties`);
+      setProperties(normalizeJsonServerList(res.data));
+      setShowDraftModal(false);
+      setDraftTarget(null);
+      setDraftEditForm(null);
+      setDraftExtraFiles([]);
+      alert(`✅ Đã cập nhật nháp ${draftTarget.id}.`);
+    } catch {
+      alert('Đã xảy ra lỗi. Kiểm tra API đang chạy.');
+    }
+    setDraftSubmitting(false);
+  };
+
+  const handleSaveDraft = async () => {
+    if (!address.district && !address.houseNumber && !formData.area && !formData.price) {
+      alert('Vui lòng nhập ít nhất một số thông tin (ví dụ: địa chỉ hoặc diện tích) trước khi lưu nháp.');
+      return;
+    }
+    try {
+      const res = await axios.get(`\${API_BASE_URL}/properties`);
+      const maxId = res.data.reduce((max, p) => {
+        const idToCheck = p.propertyCode || p.id;
+        const n = propertySequenceNumber(idToCheck);
+        return n != null ? Math.max(max, n) : max;
+      }, 0);
+      const newId = `LS-${String(maxId + 1).padStart(5, '0')}`;
+      const draftAddress = fullAddress || '(Chưa nhập địa chỉ)';
+      await axios.post(`\${API_BASE_URL}/properties`, {
+        id: newId,
+        propertyCode: newId,
+        address: draftAddress,
+        district: address.district || '',
+        ward: address.ward || '',
+        houseNumber: address.houseNumber || '',
+        street: address.street || '',
+        province: address.province || DEFAULT_PROVINCE,
+        futureWard: address.futureWard || null,
+        type: formData.type,
+        propertyType: formData.propertyType,
+        price: formData.price ? Number(String(formData.price).replace(/,/g, '')) : 0,
+        priceUnit: formData.priceUnit,
+        price_display: buildPriceDisplayFromFields({
+          price: formData.price ? Number(String(formData.price).replace(/,/g, '')) : 0,
+          priceUnit: formData.priceUnit,
+          type: formData.type,
+        }),
+        area: formData.area ? Number(String(formData.area).replace(/,/g, '')) : 0,
+        bedrooms: Number(formData.bedrooms) || 0,
+        bathrooms: Number(formData.bathrooms) || 0,
+        direction: formData.direction,
+        condition: formData.condition,
+        source: formData.source,
+        furniture: formData.furniture,
+        floor: formData.floor ? parseInt(formData.floor, 10) : null,
+        legalStatus: formData.legalStatus,
+        description: formData.description,
+        images: [],
+        level1_status: 'Mới',
+        level2_status: 'Chưa niêm yết',
+        is_draft: true,
+        createdBy: currentUser.name || 'Sales',
+        createdBy_id: normalizeUserId(currentUser.id) ?? USER_ID ?? null,
+        manager_name: managerName || currentUser.name || '',
+        pos_name: currentUser.pos_name || 'POS Q1',
+        pos_id: currentUser.pos_id || 1,
+        createdAt: new Date().toISOString(),
+      });
+      await postEntityAudit({
+        action: `[F2] Đầu chủ lưu nháp tài sản ${newId} (TRẠNG THÁI: Mới)`,
+        actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_DRAFT_SAVE,
+        entityId: newId,
+        property_id: newId,
+        user: currentUser.name || 'Sales (F2)',
+        user_id: USER_ID,
+        new_status: 'Mới',
+      });
+      alert(`✅ Đã lưu nháp ${newId}! Bạn có thể tiếp tục chỉnh sửa và gửi duyệt sau.`);
+      setMainTab('myprops');
+    } catch (err) {
+      const detail = err?.response?.data?.error || err?.message || '';
+      alert(detail ? `Lỗi lưu nháp: ${detail}` : 'Lỗi khi lưu nháp. Kiểm tra API đang chạy port 5000.');
+    }
+  };
+
+  const handleContinueToBranch = async (e) => {
+    e.preventDefault();
+    const imageFiles = files.filter((f) => f.type.startsWith('image/'));
+    const v = validatePropertySubmit({
+      address,
+      formData,
+      imageCount: imageFiles.length,
+      requireImages: true,
+    });
+    if (!v.ok) {
+      alert(v.message);
+      return;
+    }
+
     const numPrice = Number(String(formData.price).replace(/,/g, ''));
     if (formData.type === 'Bán' && formData.priceUnit === 'VNĐ' && numPrice < 100000000) {
-       if (!window.confirm("Cảnh báo: Giá bán quá thấp (< 100tr). Bạn có chắc chắn không?")) return;
+      if (!window.confirm('Cảnh báo: Giá bán quá thấp (< 100tr). Bạn có chắc chắn không?')) return;
     }
 
+    const dupOk = await requireDuplicateGate(address, formData.type, pendingSubmitPropertyId);
+    if (!dupOk) return;
+
+    setPendingSubmitPropertyId(null);
     setShowBranchModal(true);
   };
 
   const handleSubmitBranch = async () => {
     if (!selectedBranch) return;
+
     const imageFiles = files.filter((f) => f.type.startsWith('image/'));
-    if (imageFiles.length < 1) {
-      alert('Bắt buộc ít nhất 1 ảnh (JPG/PNG/…) đính kèm hồ sơ.');
+    const existingProp = pendingSubmitPropertyId
+      ? properties.find((p) => p.id === pendingSubmitPropertyId)
+      : null;
+    const existingImageCount = existingProp?.images?.filter(Boolean).length || 0;
+    const imageCount = pendingSubmitPropertyId ? existingImageCount : imageFiles.length;
+
+    const v = validatePropertySubmit({
+      address,
+      formData,
+      imageCount,
+      requireImages: true,
+    });
+    if (!v.ok) {
+      alert(v.message);
       return;
     }
+
+    const dupOk = await requireDuplicateGate(address, formData.type, pendingSubmitPropertyId);
+    if (!dupOk) return;
+
     let lv1Status = '';
     if (selectedBranch === 1) lv1Status = 'Chờ KH ký';
     else if (selectedBranch === 2) lv1Status = 'Chờ duyệt đảm bảo';
     else if (selectedBranch === 3) lv1Status = 'Chờ POS duyệt';
 
-    const res = await axios.get('http://localhost:5000/properties');
-    const maxId = res.data.reduce((max, p) => {
-      const n = propertySequenceNumber(p.id);
-      return n != null ? Math.max(max, n) : max;
-    }, 0);
-    const newId = `LS-${String(maxId + 1).padStart(5, '0')}`;
-
-    const userStr = localStorage.getItem('user');
-    const user = userStr ? JSON.parse(userStr) : {};
-
-    const imageUrls = [];
-    for (const f of imageFiles.slice(0, 12)) {
-      try {
-        imageUrls.push(await readFileAsDataURL(f, MAX_IMAGE_BYTES));
-      } catch (e) {
-        alert(e?.message || `Không đọc được ảnh: ${f.name}`);
-        return;
+    const dummyImageUrls = [];
+    if (!pendingSubmitPropertyId) {
+      for (let i = 0; i < imageFiles.length; i++) {
+        dummyImageUrls.push(`https://picsum.photos/seed/ihz-create-${Date.now()}-${i}/1200/800`);
       }
     }
 
-    await axios.post('http://localhost:5000/properties', {
-      id: newId,
-      propertyCode: newId,
+    const body = {
       address: fullAddress,
       futureWard: address.futureWard || null,
       district: address.district,
       ward: address.ward,
+      houseNumber: address.houseNumber,
+      street: address.street,
+      province: address.province || DEFAULT_PROVINCE,
       type: formData.type,
       propertyType: formData.propertyType,
       price: Number(String(formData.price).replace(/,/g, '')),
@@ -357,22 +884,114 @@ function Feature2_Create() {
       floor: formData.floor ? parseInt(formData.floor, 10) : null,
       legalStatus: formData.legalStatus,
       description: formData.description,
-      images: imageUrls,
       statusLv1: lv1Status,
       level1_status: lv1Status,
       statusLv2: 'Chưa niêm yết',
       level2_status: 'Chưa niêm yết',
-      createdBy: currentUser.name || 'Sales 1',
-      createdBy_id: currentUser.id || 'u_sales1',
-      manager_name: managerName || currentUser.name || 'Sales 1',
-      pos_name: currentUser.pos_name || 'POS Q1',
-      pos_id: currentUser.pos_id || 1,
-      createdAt: new Date().toISOString(),
+      price_display: buildPriceDisplayFromFields({
+        price: Number(String(formData.price).replace(/,/g, '')),
+        priceUnit: formData.priceUnit,
+        type: formData.type,
+      }),
+      is_draft: false,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const now = new Date().toISOString();
+    body.approval_branch = selectedBranch;
+    if (selectedBranch === 1) {
+      body.esign_sent_at = now;
+      body.esign_link_demo = `https://esign.ihouzz.demo/kh-ky/${Date.now()}`;
+    }
+
+    let savedId = pendingSubmitPropertyId;
+    if (pendingSubmitPropertyId) {
+      if (dummyImageUrls.length) body.images = dummyImageUrls;
+      await axios.patch(
+        `\${API_BASE_URL}/properties/${encodeURIComponent(pendingSubmitPropertyId)}`,
+        body,
+      );
+    } else {
+      const res = await axios.get(`\${API_BASE_URL}/properties`);
+      const maxId = res.data.reduce((max, p) => {
+        const idToCheck = p.propertyCode || p.id;
+        const n = propertySequenceNumber(idToCheck);
+        return n != null ? Math.max(max, n) : max;
+      }, 0);
+      savedId = `LS-${String(maxId + 1).padStart(5, '0')}`;
+      await axios.post(`\${API_BASE_URL}/properties`, {
+        id: savedId,
+        propertyCode: savedId,
+        ...body,
+        images: dummyImageUrls,
+        createdBy: currentUser.name || 'Sales 1',
+        createdBy_id: normalizeUserId(currentUser.id) ?? USER_ID ?? null,
+        manager_name: managerName || currentUser.name || 'Sales 1',
+        pos_name: currentUser.pos_name || 'POS Q1',
+        pos_id: currentUser.pos_id || 1,
+        createdAt: now,
+      });
+    }
+
+    const logAction =
+      selectedBranch === 1
+        ? `[F2] Nhánh 1 — Gửi link eSign KH, ${savedId} → Chờ KH ký`
+        : selectedBranch === 2
+          ? `[F2] Nhánh 2 — Gửi duyệt đảm bảo ${savedId}`
+          : `[F2] Nhánh 3 — Gửi duyệt (đã ký sẵn) ${savedId}`;
+    await postEntityAudit({
+      action: logAction,
+      actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_SUBMIT_WAREHOUSE,
+      entityId: savedId,
+      property_id: savedId,
+      user: currentUser.name || 'Sales (F2)',
+      user_id: USER_ID,
+      extra: { selectedBranch },
     });
 
-    alert(`✅ Thành công! Đã tạo mã ${newId} và gửi vào nhánh duyệt.`);
+    if (selectedBranch === 1) {
+      await axios.post(`\${API_BASE_URL}/notifications`, {
+        propertyId: savedId,
+        recipient: 'Khách hàng (demo)',
+        message: `[Demo eSign] Link ký HĐMG đã gửi qua Zalo OA / Email cho ${savedId}.`,
+        type: 'info',
+        createdAt: now,
+        isRead: false,
+      });
+    } else if (selectedBranch === 2 || selectedBranch === 3) {
+      await axios.post(`\${API_BASE_URL}/notifications`, {
+        propertyId: savedId,
+        recipient: currentUser.pos_name ? 'GĐ POS' : 'Giám đốc POS',
+        message:
+          selectedBranch === 2
+            ? `Tài sản ${savedId} chờ phê duyệt Kho Đảm bảo.`
+            : `Tài sản ${savedId} chờ phê duyệt nhập Kho Chuẩn (HĐMG đã ký).`,
+        type: 'info',
+        createdAt: now,
+        isRead: false,
+      });
+    }
+
     setShowBranchModal(false);
-    navigate('/dashboard');
+    setSelectedBranch(null);
+    setPendingSubmitPropertyId(null);
+    setDupAcknowledged(false);
+    await reloadPropertiesAndListings();
+
+    if (selectedBranch === 1) {
+      setEsignFlowPropId(savedId);
+      setShowEsignFlowModal(true);
+      setMainTab('myprops');
+      return;
+    }
+
+    const code = formatPropertyId(savedId);
+    if (selectedBranch === 2) {
+      alert(`✅ ${code} — Đã gửi «Chờ duyệt đảm bảo». GĐ POS sẽ xử lý tại mục Duyệt kho.`);
+    } else {
+      alert(`✅ ${code} — Đã gửi «Chờ POS duyệt». GĐ POS sẽ xử lý tại mục Duyệt kho.`);
+    }
+    setMainTab('myprops');
   };
 
   const dupIconClass = dupStatus === 'checking'
@@ -392,7 +1011,7 @@ function Feature2_Create() {
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
         <div>
           <h3 className="fw-bold m-0">Khởi tạo &amp; Quản lý Tài sản (F2)</h3>
-          <small className="text-muted">FR2-001 • Chuyên viên Đầu chủ thực hiện</small>
+          <small className="text-muted">Chuyên viên Đầu chủ thực hiện</small>
         </div>
         <div className="btn-group shadow-sm" role="group">
           <button type="button" className={`btn ${mainTab === 'create' ? 'btn-primary' : 'btn-outline-primary'}`}
@@ -402,7 +1021,7 @@ function Feature2_Create() {
           <button type="button" className={`btn ${mainTab === 'myprops' ? 'btn-primary' : 'btn-outline-primary'}`}
             onClick={() => setMainTab('myprops')}>
             <i className="bi bi-building me-1"></i>Tài sản của tôi
-            <span className="badge bg-white text-primary ms-2">{myPropsList.length}</span>
+            <span className="badge bg-white text-primary ms-2">{myPropsListFiltered.length}</span>
           </button>
         </div>
       </div>
@@ -432,9 +1051,10 @@ function Feature2_Create() {
                       onChange={e => {
                         setFormData({ ...formData, type: e.target.value });
                         setDupStatus(null);
+                        setDupAcknowledged(false);
                       }} />
                     <label className="form-check-label" htmlFor={`gd${t}`}>
-                      {t === 'Bán' ? '🏷️ Mua Bán (kiểm tra trùng BR-001)' : '🔑 Cho Thuê'}
+                      {t === 'Bán' ? '🏷️ Mua Bán (kiểm tra trùng địa chỉ)' : '🔑 Cho Thuê'}
                     </label>
                   </div>
                 ))}
@@ -452,6 +1072,7 @@ function Feature2_Create() {
                 onChange={(newAddr) => {
                   setAddress(newAddr);
                   setDupStatus(null);
+                  setDupAcknowledged(false);
                 }}
               />
 
@@ -480,7 +1101,7 @@ function Feature2_Create() {
               <div className="d-flex justify-content-end mt-2">
                 <button type="button" className="btn btn-sm btn-outline-primary"
                   onClick={handleBlurDupCheck} disabled={!address.houseNumber || !address.street}>
-                  <i className="bi bi-search me-1"></i>Kiểm tra trùng địa chỉ (BR-001)
+                  <i className="bi bi-search me-1"></i>Kiểm tra trùng địa chỉ
                 </button>
               </div>
             </div>
@@ -698,8 +1319,8 @@ function Feature2_Create() {
 
               <div className="d-grid gap-2">
                 <button type="button" className="btn btn-outline-secondary"
-                  onClick={() => alert('Đã lưu nháp! (FR2-010)')}>
-                  <i className="bi bi-floppy me-2"></i>Lưu Nháp
+                  onClick={handleSaveDraft}>
+                  <i className="bi bi-floppy me-2"></i>Lưu nháp
                 </button>
                 <button type="submit" className="btn btn-primary fw-bold">
                   Tiếp tục → Chọn Nhánh Gửi Duyệt
@@ -718,7 +1339,7 @@ function Feature2_Create() {
               <div className="modal-header bg-warning bg-opacity-10 border-0">
                 <h5 className="modal-title fw-bold text-warning-emphasis">
                   <i className="bi bi-exclamation-triangle-fill text-warning me-2"></i>
-                  Phát hiện địa chỉ có thể trùng lặp (BR-001)
+                  Phát hiện địa chỉ có thể trùng lặp
                 </h5>
               </div>
               <div className="modal-body">
@@ -729,24 +1350,24 @@ function Feature2_Create() {
                   </thead>
                   <tbody>
                     <tr>
-                      <td className="fw-bold text-primary">{dupInfo?.id}</td>
-                      <td>POS Quận 1 (Khác chi nhánh)</td>
-                      <td><span className="badge bg-success">{dupInfo?.statusLv1}</span></td>
-                      <td><span className="badge bg-info text-dark">{dupInfo?.statusLv2}</span></td>
+                      <td className="fw-bold text-primary">{formatPropertyId(dupInfo?.propertyCode || dupInfo?.id || '')}</td>
+                      <td>{dupInfo?.pos_name || '—'}</td>
+                      <td><span className="badge bg-success">{dupInfo?.level1_status || dupInfo?.statusLv1}</span></td>
+                      <td><span className="badge bg-info text-dark">{dupInfo?.level2_status || dupInfo?.statusLv2}</span></td>
                     </tr>
                   </tbody>
                 </table>
                 <p className="small text-danger fst-italic">
-                  * Địa chỉ chi tiết bị ẩn do tài sản thuộc chi nhánh khác (BR-016).
+                  * Địa chỉ chi tiết bị ẩn do tài sản thuộc chi nhánh khác.
                 </p>
               </div>
               <div className="modal-footer border-0">
                 <button type="button" className="btn btn-outline-secondary"
-                  onClick={() => { setShowDuplicateModal(false); setDupStatus(null); }}>
+                  onClick={() => { setShowDuplicateModal(false); setDupStatus(null); setDupAcknowledged(false); }}>
                   Quay lại chỉnh sửa
                 </button>
                 <button type="button" className="btn btn-warning fw-bold"
-                  onClick={() => setShowDuplicateModal(false)}>
+                  onClick={() => { setShowDuplicateModal(false); setDupAcknowledged(true); }}>
                   Xác nhận, tiếp tục tạo
                 </button>
               </div>
@@ -809,55 +1430,214 @@ function Feature2_Create() {
 
       {mainTab === 'myprops' && (
         <div className="card border-0 shadow-sm">
+          {esignFlowProperty && (
+            <div className="card-body border-bottom py-3 bg-primary bg-opacity-10">
+              <div className="d-flex flex-wrap align-items-start justify-content-between gap-3">
+                <div className="flex-grow-1">
+                  <h6 className="fw-bold text-primary mb-2">
+                    <i className="bi bi-pen me-2"></i>
+                    Nhánh 1 — eSign HĐMG · {propertyDisplayCode(esignFlowProperty)}
+                  </h6>
+                  {esignFlowProperty.level1_status === 'Chờ KH ký' && (
+                    <>
+                      <p className="small mb-2">
+                        Đang chờ Khách hàng ký. Link eSign đã gửi qua <strong>Zalo OA / Email</strong> (demo).
+                        {esignFlowProperty.esign_link_demo && (
+                          <span className="d-block mt-1 text-muted">
+                            Link: <code className="user-select-all">{esignFlowProperty.esign_link_demo}</code>
+                          </span>
+                        )}
+                      </p>
+                      <span className="badge bg-warning text-dark">Chờ KH ký</span>
+                    </>
+                  )}
+                  {esignFlowProperty.level1_status === 'KH đã ký' && (
+                    <>
+                      <p className="small mb-2">KH đã ký HĐMG — bấm <strong>Gửi duyệt POS</strong> để sang «Chờ POS duyệt».</p>
+                      <span className="badge bg-success">KH đã ký</span>
+                    </>
+                  )}
+                </div>
+                <div className="d-flex flex-wrap gap-2">
+                  {esignFlowProperty.level1_status === 'Chờ KH ký' && (
+                    <button type="button" className="btn btn-primary btn-sm fw-bold"
+                      onClick={() => handleConfirmKhSigned(esignFlowProperty)}>
+                      <i className="bi bi-check2-circle me-1"></i>Xác nhận KH đã ký
+                    </button>
+                  )}
+                  {esignFlowProperty.level1_status === 'KH đã ký' && (
+                    <button type="button" className="btn btn-success btn-sm fw-bold"
+                      onClick={() => handleSendEsignToPos(esignFlowProperty)}>
+                      <i className="bi bi-send-check me-1"></i>Gửi duyệt POS
+                    </button>
+                  )}
+                  <button type="button" className="btn btn-outline-secondary btn-sm"
+                    onClick={() => { setEsignFlowPropId(null); setShowEsignFlowModal(false); }}>
+                    Đóng theo dõi
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="card-header bg-white d-flex justify-content-between align-items-center py-3">
             <span className="fw-bold"><i className="bi bi-building me-2 text-primary"></i>Tài sản của tôi</span>
             <button type="button" className="btn btn-sm btn-outline-primary"
               onClick={async () => {
                 try {
                   const [resP, resL] = await Promise.all([
-                    axios.get('http://localhost:5000/properties'),
-                    axios.get('http://localhost:5000/listings'),
+                    axios.get(`\${API_BASE_URL}/properties`),
+                    axios.get(`\${API_BASE_URL}/listings`),
                   ]);
-                  setProperties(resP.data);
-                  setListings(resL.data);
+                  setProperties(normalizeJsonServerList(resP.data));
+                  setListings(normalizeJsonServerList(resL.data));
                 } catch (e) { console.error(e); }
               }}>
               <i className="bi bi-arrow-clockwise"></i>
             </button>
+          </div>
+          <div className="card-body py-2 border-bottom bg-light">
+            <div className="row g-2 align-items-end">
+              <div className="col-lg-3 col-md-6">
+                <label className="form-label small mb-0 text-muted">Tìm kiếm theo ký tự</label>
+                <input
+                  type="search"
+                  className="form-control form-control-sm"
+                  placeholder="Tìm mã LS / địa chỉ…"
+                  value={myPropsSearch}
+                  onChange={(e) => setMyPropsSearch(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="col-lg-3 col-md-6">
+                <label className="form-label small mb-0 text-muted d-block">Loại giao dịch</label>
+                <div className="btn-group btn-group-sm w-100">
+                  {['all', 'Bán', 'Thuê'].map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className={`btn ${myPropsTypeFilter === t ? 'btn-info text-white' : 'btn-outline-info'}`}
+                      onClick={() => setMyPropsTypeFilter(t)}
+                      style={{ flex: 1 }}
+                    >
+                      {t === 'all' ? 'Tất cả' : t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="col-lg-3 col-md-6">
+                <label className="form-label small mb-0 text-muted">Lọc trạng thái</label>
+                <select
+                  className="form-select form-select-sm"
+                  value={myPropsStatusFilter}
+                  onChange={(e) => setMyPropsStatusFilter(e.target.value)}
+                >
+                  {MY_PROPS_STATUS_OPTIONS.map((o) => (
+                    <option key={o.value === MY_PROPS_STATUS_ALL ? '__all' : o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-lg-3 col-md-12">
+                <div className="form-check pb-1">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="f2MyPropsShowRemoved"
+                    checked={includeRemovedMyProps}
+                    onChange={(e) => setIncludeRemovedMyProps(e.target.checked)}
+                  />
+                  <label className="form-check-label small" htmlFor="f2MyPropsShowRemoved">
+                    Hiển thị tài sản <strong className="text-danger">Đã gỡ nguồn</strong> (mặc định ẩn)
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="small text-muted mt-2">
+              Hiển thị <strong>{myPropsListFiltered.length}</strong> / {myPropsListRaw.length} tài sản
+              {!includeRemovedMyProps && <span> · Đang ẩn <strong>Đã gỡ nguồn</strong></span>}
+            </div>
           </div>
           <div className="table-responsive">
             <table className="table table-sm align-middle mb-0">
               <thead className="table-light">
                 <tr>
                   <th>Mã</th>
+                  <th>Loại BĐS</th>
+                  <th>Địa chỉ</th>
+                  <th>Loại GD</th>
+                  <th>Giá</th>
+                  <th>Kho</th>
                   <th>Trạng thái kho</th>
                   <th>Yêu cầu cập nhật</th>
                   <th className="text-end">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
-                {myPropsList.length === 0 && (
+                {myPropsListFiltered.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="text-center text-muted py-4">Chưa có tài sản thuộc tài khoản của bạn.</td>
+                    <td colSpan={9} className="text-center text-muted py-4">
+                      {myPropsListRaw.length === 0
+                        ? 'Chưa có tài sản thuộc tài khoản của bạn.'
+                        : 'Không có tài sản khớp bộ lọc hoặc từ khóa tìm kiếm.'}
+                    </td>
                   </tr>
                 )}
-                {myPropsList.slice().reverse().map((p) => {
+                {myPropsListFiltered.slice().reverse().map((p) => {
                   const lv1 = p.level1_status || p.statusLv1 || '—';
+                  const lv2 = p.level2_status || p.statusLv2 || '—';
                   const pendingUp = p.update_request_status === UPDATE_REQUEST_PENDING;
                   return (
-                    <tr key={p.id}>
-                      <td className="fw-semibold text-primary">{p.propertyCode || p.id}</td>
-                      <td><span className="badge bg-secondary">{lv1}</span></td>
+                    <tr key={p.id} style={lv1 === 'Mới' ? { background: '#fffbeb' } : {}}>
+                      <td className="fw-semibold text-primary text-nowrap">{formatPropertyId(p.propertyCode || p.id)}</td>
+                      <td className="small">{p.propertyType || '—'}</td>
+                      <td className="small" style={{ minWidth: 200 }}>
+                        <div>{p.address || '—'}</div>
+                      </td>
+                      <td>
+                        <span className={`badge ${p.type === 'Thuê' ? 'bg-info text-dark' : 'bg-danger'}`}>{p.type || '—'}</span>
+                      </td>
+                      <td className="small text-nowrap">{formatPropertyPriceDisplay(ROLE, p, POS_ID, POS_NAME)}</td>
+                      <td className="small">{warehouseLabel(p)}</td>
+                      <td className="small">
+                        <div>
+                          <span className={`badge ${lv1 === 'Mới' ? 'bg-warning text-dark' : 'bg-secondary'}`}>
+                            {lv1 === 'Mới' ? '📝 Nháp' : lv1}
+                          </span>
+                        </div>
+                        <div className="mt-1">
+                          <span className="badge bg-light text-dark border" title="Level 2 niêm yết">Lv2: {lv2}</span>
+                        </div>
+                      </td>
                       <td>
                         {pendingUp ? (
                           <span className="badge bg-info text-dark">Chờ GĐ POS duyệt cập nhật</span>
                         ) : propertyHasLiveListingForUpdateLock(p, listings) ? (
                           <span className="badge bg-warning text-dark">Đang niêm yết — không chỉnh kho</span>
+                        ) : lv1 === 'Mới' ? (
+                          <span className="badge bg-warning text-dark">⏳ Chưa gửi duyệt</span>
                         ) : (
                           <span className="text-muted">—</span>
                         )}
                       </td>
                       <td className="text-end">
+                        {(lv1 === 'Mới' || lv1 === 'Bị từ chối') && (
+                          <button type="button" className={`btn btn-sm me-1 ${lv1 === 'Bị từ chối' ? 'btn-outline-danger' : 'btn-warning'}`}
+                            onClick={() => openDraftModal(p)}>
+                            <i className="bi bi-pencil-square me-1"></i>
+                            {lv1 === 'Bị từ chối' ? 'Chỉnh sửa & gửi lại' : 'Hoàn thiện hồ sơ'}
+                          </button>
+                        )}
+                        {lv1 === 'Chờ KH ký' && (
+                          <button type="button" className="btn btn-sm btn-primary me-1"
+                            onClick={() => handleConfirmKhSigned(p)}>
+                            <i className="bi bi-check2-circle me-1"></i>Xác nhận KH đã ký
+                          </button>
+                        )}
+                        {lv1 === 'KH đã ký' && (
+                          <button type="button" className="btn btn-sm btn-success me-1"
+                            onClick={() => handleSendEsignToPos(p)}>
+                            <i className="bi bi-send-check me-1"></i>Gửi duyệt POS
+                          </button>
+                        )}
                         {canRequestPropertyUpdate(p, USER_ID, listings) && (
                           <button type="button" className="btn btn-sm btn-outline-primary"
                             onClick={() => openUpdateRequestModal(p)}>
@@ -874,13 +1654,256 @@ function Feature2_Create() {
         </div>
       )}
 
+      {/* Modal: Hoàn thiện hồ sơ nháp */}
+      {showDraftModal && draftTarget && draftEditForm && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.65)', zIndex: 1055 }}>
+          <div className="modal-dialog modal-xl modal-dialog-scrollable">
+            <div className="modal-content border-0 shadow-lg">
+              <div className="modal-header text-white" style={{ background: 'linear-gradient(90deg,#f59e0b,#d97706)' }}>
+                <h5 className="modal-title fw-bold">
+                  <i className="bi bi-pencil-square me-2"></i>Hoàn thiện hồ sơ Nháp — {draftTarget.propertyCode || draftTarget.id}
+                </h5>
+                <button type="button" className="btn-close btn-close-white"
+                  onClick={() => {
+                    setShowDraftModal(false);
+                    setDraftTarget(null);
+                    setDraftEditForm(null);
+                    setDraftExtraFiles([]);
+                  }} />
+              </div>
+              <div className="modal-body">
+                <div className="alert alert-warning py-2 mb-3">
+                  <i className="bi bi-info-circle me-2"></i>
+                  <strong>Trạng thái Hiện tại: Nháp (Mới)</strong> — Bổ sung đủ Quận, <strong>Phường</strong>, Số nhà, Đường, Diện tích, Giá và ít nhất 1 ảnh trước khi <strong>Gửi duyệt</strong>. Loại <strong>Bán</strong> sẽ bắt buộc kiểm tra trùng địa chỉ.
+                </div>
+                <div className="row g-3">
+                  <div className="col-12">
+                    <label className="form-label fw-semibold">Địa chỉ (Quận, Phường, Số nhà, Đường) <span className="text-danger">*</span></label>
+                    <SmartAddress
+                      value={draftEditForm.addressFields}
+                      onChange={(addressFields) => {
+                        setDraftEditForm({ ...draftEditForm, addressFields });
+                        setDupAcknowledged(false);
+                      }}
+                    />
+                    <div className="small text-muted mt-1">
+                      {buildFullAddress(draftEditForm.addressFields) || 'Chưa đủ thành phần địa chỉ'}
+                    </div>
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-semibold">Loại GD</label>
+                    <select className="form-select" value={draftEditForm.type}
+                      onChange={e => {
+                        setDraftEditForm({ ...draftEditForm, type: e.target.value });
+                        setDupAcknowledged(false);
+                      }}>
+                      <option>Bán</option><option>Thuê</option>
+                    </select>
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-semibold">Loại BĐS</label>
+                    <select className="form-select" value={draftEditForm.propertyType}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, propertyType: e.target.value })}>
+                      <option>Căn hộ chung cư</option><option>Nhà phố</option>
+                      <option>Đất nền</option><option>Biệt thự</option>
+                      <option>Shophouse</option><option>Văn phòng</option>
+                    </select>
+                  </div>
+                  <div className="col-md-2">
+                    <label className="form-label fw-semibold">Diện tích (m²) <span className="text-danger">*</span></label>
+                    <input type="number" className="form-control" min="1" value={draftEditForm.area}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, area: e.target.value })} />
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-semibold">Giá <span className="text-danger">*</span></label>
+                    <input type="text" className="form-control" value={draftEditForm.price}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, price: e.target.value })} />
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-semibold">Đơn vị giá</label>
+                    <select className="form-select" value={draftEditForm.priceUnit}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, priceUnit: e.target.value })}>
+                      <option value="tỷ VNĐ">tỷ VNĐ</option>
+                      <option value="triệu VNĐ">triệu VNĐ</option>
+                      <option value="VNĐ">VNĐ</option>
+                      <option value="VNĐ/tháng">VNĐ/tháng</option>
+                      <option value="triệu VNĐ/tháng">triệu VNĐ/tháng</option>
+                    </select>
+                  </div>
+                  <div className="col-md-2">
+                    <label className="form-label fw-semibold">Phòng ngủ</label>
+                    <input type="number" className="form-control" min="0" value={draftEditForm.bedrooms}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, bedrooms: e.target.value })} />
+                  </div>
+                  <div className="col-md-2">
+                    <label className="form-label fw-semibold">Phòng tắm</label>
+                    <input type="number" className="form-control" min="0" value={draftEditForm.bathrooms}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, bathrooms: e.target.value })} />
+                  </div>
+                  <div className="col-md-2">
+                    <label className="form-label fw-semibold">Tầng</label>
+                    <input type="number" className="form-control" value={draftEditForm.floor}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, floor: e.target.value })} />
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-semibold">Hướng</label>
+                    <select className="form-select" value={draftEditForm.direction}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, direction: e.target.value })}>
+                      <option value="">— Chọn —</option>
+                      <option>Đông</option><option>Tây</option><option>Nam</option><option>Bắc</option>
+                      <option>Đông Nam</option><option>Đông Bắc</option><option>Tây Nam</option><option>Tây Bắc</option>
+                    </select>
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-semibold">Tình trạng</label>
+                    <select className="form-select" value={draftEditForm.condition}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, condition: e.target.value })}>
+                      <option value="">— Chọn —</option>
+                      <option>Nhà mới</option><option>Đang sử dụng</option><option>Cần cải tạo</option>
+                    </select>
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-semibold">Nội thất</label>
+                    <select className="form-select" value={draftEditForm.furniture}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, furniture: e.target.value })}>
+                      <option value="">— Chọn —</option>
+                      <option>Đầy đủ</option><option>Cơ bản</option><option>Nhà trống</option>
+                    </select>
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-semibold">Nguồn hàng</label>
+                    <select className="form-select" value={draftEditForm.source}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, source: e.target.value })}>
+                      <option value="">— Chọn —</option>
+                      <option>Chuyển nhượng</option><option>Dự án</option><option>Cá nhân</option>
+                    </select>
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-semibold">Pháp lý</label>
+                    <select className="form-select" value={draftEditForm.legalStatus}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, legalStatus: e.target.value })}>
+                      <option>Sổ đỏ</option><option>Sổ hồng riêng</option>
+                      <option>Hợp đồng mua bán</option><option>Đang chờ sổ</option>
+                    </select>
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label fw-semibold">Mô tả thêm</label>
+                    <textarea className="form-control" rows={3} value={draftEditForm.description}
+                      onChange={e => setDraftEditForm({ ...draftEditForm, description: e.target.value })}
+                      placeholder="Mô tả thêm về tài sản (vị trí, ưu điểm...)"></textarea>
+                  </div>
+                  <div className="col-12">
+                    <label className="form-label fw-semibold">
+                      Ảnh minh họa tài sản <span className="text-danger">*</span>
+                    </label>
+                    <p className="small text-danger mb-2">
+                      Bắt buộc ít nhất <strong>1 ảnh</strong> (JPG/PNG/WebP, tối đa 10MB/file) trước khi Gửi duyệt.
+                      {countDraftImages(draftEditForm, draftExtraFiles) > 0 && (
+                        <span className="text-success ms-1">
+                          — Đã có {countDraftImages(draftEditForm, draftExtraFiles)} ảnh.
+                        </span>
+                      )}
+                    </p>
+                    {(draftEditForm.images || []).length > 0 && (
+                      <div className="d-flex flex-wrap gap-2 mb-2">
+                        {(draftEditForm.images || []).map((url, i) => (
+                          <div key={`draft-saved-${i}`} className="position-relative">
+                            <img src={url} alt="" className="rounded border" style={{ width: 88, height: 66, objectFit: 'cover' }} />
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-danger position-absolute top-0 end-0 p-0 lh-1"
+                              style={{ fontSize: 10, transform: 'translate(25%,-25%)' }}
+                              title="Xóa ảnh"
+                              onClick={() =>
+                                setDraftEditForm({
+                                  ...draftEditForm,
+                                  images: (draftEditForm.images || []).filter((_, j) => j !== i),
+                                })
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {draftExtraFiles.length > 0 && (
+                      <ul className="list-group list-group-flush small mb-2">
+                        {draftExtraFiles.map((f, idx) => (
+                          <li
+                            key={`draft-new-${idx}-${f.name}`}
+                            className="list-group-item d-flex justify-content-between align-items-center py-1 px-2"
+                          >
+                            <span className="text-truncate">
+                              <i className="bi bi-image me-1 text-primary" />
+                              {f.name}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-link btn-sm text-danger p-0"
+                              onClick={() =>
+                                setDraftExtraFiles((prev) => prev.filter((_, j) => j !== idx))
+                              }
+                            >
+                              Xóa
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <div
+                      className="border border-2 border-dashed rounded p-3 text-center bg-light position-relative"
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <input
+                        type="file"
+                        multiple
+                        accept=".jpg,.jpeg,.png,.webp,image/*"
+                        className="position-absolute w-100 h-100 opacity-0 top-0 start-0"
+                        style={{ cursor: 'pointer' }}
+                        onChange={handleDraftExtraUpload}
+                      />
+                      <i className="bi bi-cloud-arrow-up fs-4 text-primary" />
+                      <p className="mb-0 small fw-semibold mt-1">Thêm ảnh — click hoặc kéo thả</p>
+                      <small className="text-muted">JPG, PNG, WebP · tối đa 10MB/file</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer border-0 d-flex justify-content-between">
+                <button type="button" className="btn btn-outline-secondary"
+                  onClick={() => {
+                    setShowDraftModal(false);
+                    setDraftTarget(null);
+                    setDraftEditForm(null);
+                    setDraftExtraFiles([]);
+                  }}>
+                  Hủy
+                </button>
+                <div className="d-flex gap-2">
+                  <button type="button" className="btn btn-outline-warning" disabled={draftSubmitting}
+                    onClick={() => handleCompleteDraft(false)}>
+                    <i className="bi bi-floppy me-1"></i>Lưu nháp
+                  </button>
+                  <button type="button" className="btn btn-success fw-bold" disabled={draftSubmitting}
+                    onClick={() => handleCompleteDraft(true)}>
+                    {draftSubmitting ? <span className="spinner-border spinner-border-sm me-1"></span> : <i className="bi bi-send-check me-1"></i>}
+                    Gửi duyệt → Giám đốc POS
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showUpdateModal && updateTarget && updateForm && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 1050 }}>
           <div className="modal-dialog modal-xl modal-dialog-scrollable">
             <div className="modal-content border-0 shadow-lg">
               <div className="modal-header bg-primary text-white">
                 <h5 className="modal-title fw-bold">
-                  <i className="bi bi-columns-gap me-2"></i>Gửi yêu cầu cập nhật — {updateTarget.id}
+                  <i className="bi bi-columns-gap me-2"></i>Gửi yêu cầu cập nhật — {updateTarget.propertyCode || updateTarget.id}
                 </h5>
                 <button type="button" className="btn-close btn-close-white"
                   onClick={() => { setShowUpdateModal(false); setUpdateTarget(null); setUpdateForm(null); }} />
@@ -1086,6 +2109,7 @@ function Feature2_Create() {
           </div>
         </div>
       )}
+      <AppToast toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }

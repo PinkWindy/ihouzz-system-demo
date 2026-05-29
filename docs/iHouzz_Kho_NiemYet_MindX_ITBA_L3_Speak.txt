@@ -1,0 +1,140 @@
+================================================================================
+BẢN SPEAK — Thuyết trình MindX ITBA Level 3 & Doanh nghiệp iHouzz
+Vai trò: Chuyên gia phân tích nghiệp vụ / ITBA (giọng nhẹ, hướng dẫn chuyên nghiệp)
+File slide kèm: iHouzz_Kho_NiemYet_MindX_ITBA_L3.pptx (25 slide, ghi chú diễn giả có gợi ý hình)
+Gợi ý nhịp: ~45–60 giây/slide ≈ 20–25 phút; có thể rút slide 22–24 nếu ban tổ chức giới hạn thời gian.
+================================================================================
+
+--- Slide 1 | Kho tập trung & niêm yết — nền tảng tăng trưởng iHouzz ---
+Kính chào quý Ban giám khảo MindX và đại diện doanh nghiệp iHouzz.
+Trong phần trình bày hôm nay, em xin phép đứng ở góc nhìn của một ITBA: người chuyển yêu cầu kinh doanh thành quy trình rõ ràng, có thể đo và có thể bàn giao cho đội công nghệ.
+Tiêu đề slide nhắc hai trụ cột em muốn quý vị nhớ: một là kho hàng tập trung cho nguồn bất động sản nội bộ, hai là lớp niêm yết lên sàn thương mại điện tử của iHouzz — hai việc này phải đi cùng nhau thì tốc độ mới bền.
+
+--- Slide 2 | Hôm nay chúng ta đi theo bốn nhịp ---
+Em xin phép chia bài thành bốn phần, để quý vị dễ theo dõi.
+Đầu tiên là phần mở: chúng ta chốt lại câu hỏi kinh doanh iHouzz đang cần giải.
+Tiếp theo, em mô tả thực trạng — nhưng không nói chung chung: em chia pain theo từng phòng, vì mỗi phòng “đau” ở một chỗ khác nhau.
+Phần giải pháp là trọng tâm: em trình kiến trúc quy trình, rồi nối thẳng sang các luồng đã được minh họa trong prototype demo.
+Cuối cùng, em chốt lại hiệu quả, lộ trình, và mời quý vị đặt câu hỏi theo đúng pain của phòng mình.
+
+--- Slide 3 | Góc nhìn ITBA: cầu nối giữa nghiệp vụ và sản phẩm ---
+Một ITBA “thực thụ” không chỉ ghi lại họp, mà còn phải dịch lời nói thành khung trạng thái: ai được làm gì, ở trạng thái nào, và điều gì xảy ra tiếp theo.
+Với iHouzz, em gắn mỗi luồng với tài liệu BRD và SRS để Marketing, Kinh doanh, và IT cùng nhìn một bản đồ.
+Prototype React cùng API mock không phải để “cho đẹp”, mà để chứng minh thứ tự thao tác người dùng khớp với quy trình em đề xuất — đó là cách làm giảm hiểu nhầm khi triển khai thật.
+
+--- Slide 4 | Doanh nghiệp cần gì — trong một câu ---
+Nếu gói lại một câu: iHouzz cần một kho nội bộ thống nhất, nơi sản phẩm bất động sản được kiểm soát chất lượng trước khi được phép lên sàn.
+Đồng thời, đội kinh doanh cần chọn nguồn và đẩy tin một cách có kiểm soát — để vừa nhanh, vừa không đánh đổi độ chính xác.
+Mục tiêu thiết kế của em là đưa ra bản đồ quy trình định hướng tính năng: giảm sai sót, rút thời gian niêm yết, và nâng trải nghiệm nội bộ.
+
+--- Slide 5 | Thực trạng: một sản phẩm BĐS, nhiều bàn tay ---
+Ở mô hình như iHouzz, một căn nhà đi qua nhiều vai: người mang nguồn, người duyệt kho, người soạn tin, người kiểm duyệt nội dung public, và phía IT giữ cho dữ liệu khớp với sàn điện tử.
+Rủi ro lớn không phải là “thiếu màn hình”, mà là thiếu khung trạng thái chung: khi mỗi phòng hiểu khác nhau, lỗi sẽ lộ ra ở khâu cuối — thường là lúc tin đã ra ngoài hoặc khách hàng đã thấy.
+Vì vậy, phần thực trạng tiếp theo em sẽ đi từng phòng một, một cách nhẹ nhàng nhưng thẳng thắn.
+
+--- Slide 6 | Pain Marketing: uy tín sàn nằm ở lớp kiểm duyệt ---
+Phòng Marketing của iHouzz đang gánh trách nhiệm thương hiệu và chất lượng nội dung trên sàn.
+Họ cần một hàng chờ duyệt rõ ràng, có tiêu chí, và có lịch sử chỉnh sửa — để vừa bảo vệ uy tín, vừa không làm nghẽn đội kinh doanh một cách vô cớ.
+Điểm then chốt là Marketing cần nhìn thấy tin đang đứng trên nền kho nào; nếu tách rời kho, việc kiểm duyệt sẽ luôn cảm giác như “đoán mò”.
+
+--- Slide 7 | Pain Kinh doanh: tốc độ không được mua bằng độ chính xác ---
+Với phòng Kinh doanh và đầu chủ, pain thường là trùng địa chỉ, trùng nguồn — dẫn đến tranh chấp nội bộ và mất niềm tin.
+Họ cũng cần một trạng thái dễ hiểu: “đang chờ POS”, “đang chờ MKT”, thay vì phải hỏi lại qua nhiều kênh chat.
+Cuối cùng, các luồng gỡ tin hay gỡ nguồn nếu không có luật rõ sẽ để lại rủi ro “tin ma” hoặc dữ liệu không khớp giữa kho và sàn.
+
+--- Slide 8 | Pain phát triển hệ thống KD: luật nghiệp vụ phải viết được ---
+Bộ phận phát triển hệ thống kinh doanh cần các quy tắc như cascade, chặn thao tác khi đang niêm yết, hay đồng bộ hai tầng trạng thái — phải mô tả được bằng BR, không chỉ nói miệng trong họp.
+Nếu không có sơ đồ trạng thái, đội này rất khó thống nhất với IT về phạm vi “được làm / không được làm”.
+Ma trận phòng ban và ma trận quyền chính là “hợp đồng làm việc” giữa KD hệ thống và các stakeholder khác.
+
+--- Slide 9 | Pain IT: bảo mật, tải, và khả năng kiểm toán ---
+Phía IT quan tâm tới phân quyền theo POS, để nhân viên không nhìn thấy dữ liệu ngoài phạm vi tổ chức — đây là yêu cầu sống còn khi mở rộng đa chi nhánh.
+Họ cũng quan tâm hiệu năng và kích thước payload khi ghi log nhiều.
+Và một điểm enterprise em nhấn mạnh: không xóa cứng dữ liệu vận hành; thay vào đó là vòng đời trạng thái và nhật ký — để sau này điều tra sự cố có căn cứ.
+
+--- Slide 10 | Hệ quả vận hành khi chưa có khung rõ ---
+Khi khung quy trình chưa rõ, tổ chức trả giá bằng thời gian: thời gian chờ duyệt kéo dài, và thời gian sửa lỗi sau khi đã public còn đắt hơn.
+Trải nghiệm nội bộ kém sẽ làm giảm hiệu suất chuyển đổi từ nguồn hàng sang tin rao bán hợp lệ.
+Với một sàn như iHouzz, rủi ro uy tín là rủi ro doanh thu: một vài case sai có thể lan nhanh trong tổ chức nếu không có log và không có ranh giới trách nhiệm.
+
+--- Slide 11 | Khoảng trống: thiếu một “bản đồ quy trình” chung ---
+Em xin phép tóm lại khoảng trống bằng ba ý ngắn.
+Thứ nhất, cần một lớp trung gian đồng bộ giữa trạng thái kho và trạng thái niêm yết.
+Thứ hai, cần ranh giới phê duyệt rõ: ai tạo, ai đẩy tin, ai gỡ, ai xem dữ liệu gốc.
+Thứ ba, cần bằng chứng định lượng qua audit trail — để họp sau này không chỉ dựa vào cảm tính.
+
+--- Slide 12 | Giải pháp trụ cột 1: kiến trúc hai tầng trạng thái ---
+Giải pháp em đề xuất bắt đầu bằng kiến trúc hai tầng: tầng kho mô tả vòng đời tài sản nội bộ, tầng tin mô tả hiển thị trên sàn.
+Hai tầng song song nhưng phải đồng bộ có điều kiện — đúng như các luật BR đã được nhóm em phản ánh trong prototype.
+Trên demo, quý vị sẽ thấy chuỗi F3, F5, F7, F8 thể hiện rõ thứ tự và quyền hạn — đó là “bằng chứng thao tác” của thiết kế quy trình.
+
+--- Slide 13 | Giải pháp trụ cột 2: RBAC động & che dữ liệu chi nhánh ---
+Trụ cột thứ hai là phân quyền động: admin cấu hình ma trận quyền, và UI chỉ hiển thị hành động được phép — giảm lỗi vận hành do “nhấn nhầm chức năng”.
+Với đa POS, em đưa cơ chế masking địa chỉ theo phạm vi — để vừa giám sát được, vừa không lộ thông tin giữa các chi nhánh.
+Demo F9 và F10 cho phép quý vị nhìn thấy cùng một màn hình nhưng dữ liệu thay đổi theo role: đây là ngôn ngữ IT và nghiệp vụ đều hiểu.
+
+--- Slide 14 | Giải pháp trụ cột 3: audit trail & không xóa cứng ---
+Trụ cột thứ ba phục vụ kiểm soát: mọi phê duyệt quan trọng đều ghi log và có thể export CSV.
+Điều này giúp Marketing và Kinh doanh giải thích được quyết định trước lãnh đạo, đồng thời giúp IT có dữ liệu để tái hiện sự cố.
+Demo F11 là minh chứng trực quan cho tư duy enterprise: minh bạch, truy vết, và không phụ thuộc vào trí nhớ cá nhân.
+
+--- Slide 15 | Luồng vào kho: nhập liệu thông minh, giảm trùng sớm ---
+Ở bước vào kho, em đặt SmartAddress và kiểm tra trùng sớm — đây là điểm rẻ nhất để ngăn lỗi, so với việc sửa sau khi tin đã public.
+Form chuẩn hóa cũng giúp Marketing đỡ phải “vá” nội dung vì thiếu trường bắt buộc từ đầu.
+Về phía ITBA, em khuyến nghị acceptance criteria rõ cho API tìm trùng và ngưỡng cảnh báo — để test và triển khai không tranh cãi.
+
+--- Slide 16 | Luồng chất lượng kho: GĐ POS phân loại kho chuẩn / đảm bảo ---
+Sau khi vào kho, lớp chất lượng kho do GĐ POS đảm nhiệm: đây là ranh giới trách nhiệm rất “đanh thép” nhưng cần thiết để bảo vệ nguồn hàng.
+Mỗi phê duyệt đi kèm log và thông báo nội bộ — để Kinh doanh và Marketing biết hệ thống đang ở đâu.
+Trên demo F3, quý vị có thể chọn một tài sản và duyệt, rồi quan sát trạng thái kho cập nhật ngay: đó là tính nhất quán mà ban giám khảo có thể “chạm” thử.
+
+--- Slide 17 | Luồng lên sàn: soạn tin — hàng chờ — trung tâm duyệt niêm yết ---
+Khi kho đã đạt, Kinh doanh soạn tin; Marketing đứng ở lớp kiểm duyệt để bảo vệ chất lượng sàn iHouzz.
+Trạng thái tin cần rõ: nháp, chờ duyệt, đang niêm yết — để không ai vô tình public sớm.
+Demo F4 sang F5 minh họa đúng tinh thần UC005: một mạch từ gửi duyệt đến phê duyệt, thể hiện phối hợp MKT–KD.
+
+--- Slide 18 | Luồng gỡ tin: yêu cầu có kiểm soát, đồng bộ Level 2 ---
+Gỡ tin là thao tác nhạy cảm, nên em thiết kế theo nguyên tắc yêu cầu và phê duyệt — tránh gỡ một chiều không có căn cứ.
+Sau khi Marketing duyệt, hệ thống cập nhật theo quy tắc đồng bộ đã định nghĩa, để kho và tin không lệch pha.
+Demo F6 và F7 cho thấy rõ người gửi, người duyệt, và thời điểm — rất hữu ích cho họp rà soát sau vận hành.
+
+--- Slide 19 | Luồng gỡ nguồn: luật cascade & chặn khi đang niêm yết ---
+Đây là phần em mời quý vị chú ý vì nó thể hiện tư duy ITBA “viết luật kinh doanh thành điều kiện hệ thống”.
+Theo BR-010, khi tin còn trên sàn, hệ thống chặn gỡ nguồn — để tránh tạo ra dữ liệu mồ côi hoặc mâu thuẫn với trải nghiệm người mua.
+Khi được phép, cơ chế cascade hủy tin liên quan giúp đóng vòng vận hành một cách sạch.
+Trên demo F8, quý vị có thể thử một case bị chặn và một case được duyệt để thấy luật chạy đúng như thiết kế.
+
+--- Slide 20 | Giám sát kho đa POS: đúng phạm vi, đúng độ nhạy dữ liệu ---
+Giám sát kho là nhu cầu của lãnh đạo, nhưng phải tôn trọng ranh giới tổ chức — vì vậy em đưa masking theo POS theo BR-013.
+Mục tiêu là vừa thấy được sức khỏe kho, vừa không lộ địa chỉ chi nhánh khác một cách không cần thiết.
+Trên demo F9, quý vị có thể đổi ngữ cảnh đăng nhập để thấy dữ liệu hiển thị thay đổi: đây là bằng chứng trực quan cho yêu cầu bảo mật nội bộ.
+
+--- Slide 21 | IAM & POS: ma trận quyền là “hợp đồng” giữa KD hệ thống và IT ---
+IAM không chỉ là danh sách user, mà là cách tổ chức “đóng gói” trách nhiệm theo POS và theo hành động.
+Khi ma trận quyền thay đổi, menu và thao tác phản ánh ngay — giúp thay đổi nhân sự không biến thành một đợt phát hành phần mềm cứng nhắc.
+Demo F10 cho phép quý vị minh họa một change request nhỏ, ví dụ tạm tắt quyền tạo tài sản cho một tài khoản thử nghiệm.
+
+--- Slide 22 | Minh chứng: prototype đã ánh xạ BRD / SRS / ma trận quyền ---
+Prototype React cùng json-server giúp IT review contract API sớm, trước khi đầu tư backend production đầy đủ.
+Các màn F2 đến F12 được sắp theo đúng tinh thần kịch bản UAT — giám khảo có thể tái hiện lại sau buổi trình bày.
+Em xin lưu ý nhẹ: đây là môi trường học và demo; thông tin đăng nhập chỉ phục vụ minh họa và cần được thay bằng hệ thống xác thực thật khi go-live.
+
+--- Slide 23 | Hiệu quả mong đợi: gần với chỉ số phòng ban quan tâm ---
+Phần hiệu quả em trình bày gần với ngôn ngữ đo lường: giảm lỗi nhập và trùng nguồn, rút thời gian từ kho chuẩn đến tin được duyệt, và cải thiện trải nghiệm nội bộ bằng việc giảm hỏi đáp không cần thiết.
+Đây cũng là nơi iHouzz có thể đặt KPI riêng: ví dụ SLA duyệt của Marketing, hay tỉ lệ tin bị rollback.
+Em tin rằng khi quy trình rõ, các phòng sẽ cùng nhìn một bức tranh — đó chính là “tốc độ bền”.
+
+--- Slide 24 | Lộ trình gợi ý: ưu tiên theo rủi ro nghiệp vụ & nỗ lực IT ---
+Lộ trình em đề xuất theo ba nhịp: trước tiên khóa state machine và nền API, cùng xác thực thật — vì đây là móng.
+Sau đó tích hợp sàn thật, thông báo, và báo cáo SLA cho các phòng vận hành.
+Cuối cùng là tối ưu hiệu năng và chính sách lưu trữ log theo chuẩn doanh nghiệp — để hệ thống không chỉ chạy được ngày đầu, mà còn chạy được năm thứ hai, thứ ba.
+
+--- Slide 25 | Cảm ơn MindX & iHouzz — sẵn sàng đào sâu từng pain ---
+Em xin cảm ơn quý Ban giám khảo MindX và đại diện iHouzz đã lắng nghe.
+Bài trình bày hôm nay mang đến một bản thiết kế quy trình có thể đo, có thể demo, và có thể bàn giao cho IT một cách có căn cứ.
+Em rất mong nhận được câu hỏi theo từng phòng: Marketing, Kinh doanh, Phát triển hệ thống kinh doanh, hay IT — để em có thể đào sâu đúng nơi quý vị quan tâm nhất.
+Kính chúc quý vị một buổi làm việc thật suôn sẻ.
+
+================================================================================
+Gợi ý trình bày (nhẹ nhàng): giữ giọng đều, nhìn giám khảo 2–3 giây mỗi ý; mỗi slide chốt một câu “takeaway” trước khi sang slide kế.
+================================================================================

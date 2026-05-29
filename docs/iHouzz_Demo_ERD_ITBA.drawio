@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-05-13T00:00:00.000Z" agent="PinkWindy-ITBA-ERD" version="22.0.0" type="device">
+  <diagram id="erd_main" name="01 — ERD tổng thể (logical)">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title_p1" value="&lt;b&gt;iHouzz Demo — ERD Logical (json-server)&lt;/b&gt;&lt;br/&gt;&lt;font style=&#x27;font-size:11px&#x27;&gt;Nguồn: db.json + src/utils/mediaLibraryApi.js · Thực thể = resource REST&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=15;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="60" y="40" width="1100" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="t_pos" value="&lt;b&gt;pos (Chi nhánh)&lt;/b&gt;&lt;hr/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27; color=&#x27;#333333&#x27;&gt;&lt;b&gt;id&lt;/b&gt; PK — string (json-server)&amp;#xa;name&amp;#xa;manager&amp;#xa;status (active | inactive)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="140" width="220" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="t_users" value="&lt;b&gt;users (IAM / nhân sự)&lt;/b&gt;&lt;hr/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27; color=&#x27;#333333&#x27;&gt;&lt;b&gt;id&lt;/b&gt; PK — string (u001, u_admin…)&amp;#xa;name, email, phone?&amp;#xa;role (sales | pos_manager | marketing | admin)&amp;#xa;status&amp;#xa;&lt;b&gt;pos_id&lt;/b&gt; FK → pos.id (nullable: MKT/Admin)&amp;#xa;pos_name &lt;i&gt;(denormalized)&lt;/i&gt;&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="360" y="120" width="280" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="t_prop" value="&lt;b&gt;properties (Tài sản — Kho / Level 1)&lt;/b&gt;&lt;hr/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27; color=&#x27;#333333&#x27;&gt;&lt;b&gt;id&lt;/b&gt; PK — LS-#####&amp;#xa;&lt;b&gt;createdBy_id&lt;/b&gt; FK → users.id&amp;#xa;&lt;b&gt;pos_id&lt;/b&gt; FK → pos.id (number | string trong demo)&amp;#xa;— Địa chỉ &amp; mã —&amp;#xa;address, district, ward, futureWard?, propertyCode?&amp;#xa;— Đặc tả BĐS —&amp;#xa;type, propertyType?, price, priceUnit, price_display&amp;#xa;area, width, length, bedrooms, bathrooms, floor&amp;#xa;direction, road_width, legal | legalStatus?, condition&amp;#xa;source, furniture, description?, images[]&amp;#xa;— Trạng thái 2 tầng (song song statusLv*) —&amp;#xa;level1_status, statusLv1, warehouse_type&amp;#xa;level2_status, statusLv2&amp;#xa;rejection_reason / rejected_reason, rejected_at&amp;#xa;approvedAt | approved_at, approvedBy, pos_manager&amp;#xa;— Gỡ nguồn (F8) —&amp;#xa;unsource_note, unsourceRequestedAt / By&amp;#xa;unsourceApprovedAt / By&amp;#xa;— Cập nhật chờ duyệt (F2 / F3) —&amp;#xa;pending_update_payload?, update_request_*&amp;#xa;update_rejected_*&amp;#xa;createdAt, updatedAt&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="400" width="380" height="580" as="geometry" />
+        </mxCell>
+        <mxCell id="t_list" value="&lt;b&gt;listings (Tin đăng — Level 2)&lt;/b&gt;&lt;hr/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27; color=&#x27;#333333&#x27;&gt;&lt;b&gt;id&lt;/b&gt; PK — LT-#####&amp;#xa;&lt;b&gt;property_id&lt;/b&gt; FK → properties.id&amp;#xa;&lt;b&gt;createdBy_id&lt;/b&gt; FK → users.id&amp;#xa;title, description, contact_phone&amp;#xa;images[], videos[]&amp;#xa;listing_status&amp;#xa;approvedBy, approvedBy_id, approvedAt&amp;#xa;rejectedBy, rejectedBy_id, rejectedAt, rejection_note&amp;#xa;prev_rejection_note?&amp;#xa;unlist_reason, unlist_note, unlistRequestedAt&amp;#xa;approvedUnlistBy?, approvedUnlistAt?&amp;#xa;createdAt, updatedAt, expiredAt&amp;#xa;&lt;i&gt;FE có thể gửi kèm mediaLibraryIds[]&lt;/i&gt;&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="500" y="420" width="340" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="t_media" value="&lt;b&gt;mediaLibrary (File / URL theo tin)&lt;/b&gt;&lt;hr/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27; color=&#x27;#333333&#x27;&gt;&lt;b&gt;id&lt;/b&gt; PK (json-server sinh)&amp;#xa;&lt;b&gt;listingId&lt;/b&gt; FK → listings.id&amp;#xa;property_id FK → properties.id (optional)&amp;#xa;kind (image | video), source (upload | url)&amp;#xa;url, fileName, mimeType?, fileSize?&amp;#xa;createdAt, createdBy, createdBy_id&amp;#xa;&lt;i&gt;Schema theo mediaLibraryApi.js — persistMediaItems&lt;/i&gt;&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="900" y="440" width="300" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="t_logs" value="&lt;b&gt;logs (Audit trail — bản ghi đa hình)&lt;/b&gt;&lt;hr/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27; color=&#x27;#333333&#x27;&gt;&lt;b&gt;id&lt;/b&gt; PK&amp;#xa;timestamp&amp;#xa;action (text, prefix [F#])&amp;#xa;&lt;b&gt;entityId&lt;/b&gt; &lt;i&gt;polymorphic&lt;/i&gt; (LS-*, LT-*, u*, pos id, SYSTEM)&amp;#xa;user (tên hiển thị)&amp;#xa;reason?, changesPreview[], changes[]&amp;#xa;approvalKind?, approver?, changedAt?&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fillColor=#fad9d5;strokeColor=#ae4132;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1020" width="400" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="t_notif" value="&lt;b&gt;notifications (In-app)&lt;/b&gt;&lt;hr/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27; color=&#x27;#333333&#x27;&gt;&lt;b&gt;id&lt;/b&gt; PK&amp;#xa;propertyId → properties.id&amp;#xa;recipient (tên, không FK cứng)&amp;#xa;message, type, createdAt, isRead&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="500" y="1020" width="300" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="t_sh" value="&lt;b&gt;status_history&lt;/b&gt;&lt;hr/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27; color=&#x27;#333333&#x27;&gt;&lt;i&gt;Mảng rỗng trong db.json hiện tại&lt;/i&gt;&amp;#xa;Dự phòng SRS: property_id, from_status,&amp;#xa;to_status, actor_id, reason, created_at…&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="1020" width="300" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="n_poly" value="ITBA ghi chú:&amp;#xa;entityId trong logs là tham chiếu lỏng (text).&amp;#xa;Production: audit_lines + FK hoặc JSONB chuẩn." style="shape=note;whiteSpace=wrap;html=1;size=16;fillColor=#fffacd;strokeColor=#d6b656;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="130" width="300" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="n_posid" value="pos.id trong JSON là string &quot;1&quot;.&amp;#xa;properties.pos_id đôi khi là number — chuẩn hóa khi lên DB thật." style="shape=note;whiteSpace=wrap;html=1;size=16;fillColor=#fffacd;strokeColor=#d6b656;fontSize=10;align=left;spacingLeft=6;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="290" width="300" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="e_user_pos" style="endArrow=ERone;startArrow=ERmany;html=1;strokeWidth=1;exitX=0;exitY=0.75;entryX=1;entryY=0.55;" edge="1" parent="1" source="t_users" target="t_pos">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_user_pos_l" value="pos_id" style="edgeLabel;html=1;align=center;fontSize=9;" vertex="1" connectable="0" parent="e_user_pos">
+          <mxGeometry x="-0.2" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+        <mxCell id="e_prop_user" style="endArrow=ERone;startArrow=ERmany;html=1;strokeWidth=1;exitX=0.5;exitY=0;entryX=0.25;entryY=1;dashed=1;dashPattern=5 5;" edge="1" parent="1" source="t_prop" target="t_users">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_prop_user_l" value="createdBy_id" style="edgeLabel;html=1;align=center;fontSize=9;" vertex="1" connectable="0" parent="e_prop_user">
+          <mxGeometry x="-0.2" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+        <mxCell id="e_prop_pos" style="endArrow=ERone;startArrow=ERmany;html=1;strokeWidth=1;exitX=0;exitY=0.25;entryX=0.5;entryY=1;dashed=1;dashPattern=5 5;" edge="1" parent="1" source="t_prop" target="t_pos">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_prop_pos_l" value="pos_id" style="edgeLabel;html=1;align=center;fontSize=9;" vertex="1" connectable="0" parent="e_prop_pos">
+          <mxGeometry x="-0.2" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+        <mxCell id="e_list_prop" style="endArrow=ERone;startArrow=ERmany;html=1;strokeWidth=1;exitX=0;exitY=0.35;entryX=1;entryY=0.35;" edge="1" parent="1" source="t_list" target="t_prop">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_list_prop_l" value="property_id" style="edgeLabel;html=1;align=center;fontSize=9;" vertex="1" connectable="0" parent="e_list_prop">
+          <mxGeometry x="-0.2" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+        <mxCell id="e_list_user" style="endArrow=ERone;startArrow=ERmany;html=1;strokeWidth=1;exitX=0.5;exitY=0;entryX=0.85;entryY=1;dashed=1;dashPattern=5 5;" edge="1" parent="1" source="t_list" target="t_users">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_list_user_l" value="createdBy_id" style="edgeLabel;html=1;align=center;fontSize=9;" vertex="1" connectable="0" parent="e_list_user">
+          <mxGeometry x="-0.2" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+        <mxCell id="e_med_list" style="endArrow=ERone;startArrow=ERmany;html=1;strokeWidth=1;exitX=0;exitY=0.4;entryX=1;entryY=0.55;" edge="1" parent="1" source="t_media" target="t_list">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_med_list_l" value="listingId" style="edgeLabel;html=1;align=center;fontSize=9;" vertex="1" connectable="0" parent="e_med_list">
+          <mxGeometry x="-0.2" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+        <mxCell id="e_med_prop" style="endArrow=ERone;startArrow=ERmany;html=1;strokeWidth=1;exitX=0;exitY=0.75;entryX=1;entryY=0.75;dashed=1;dashPattern=5 5;" edge="1" parent="1" source="t_media" target="t_prop">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_med_prop_l" value="property_id" style="edgeLabel;html=1;align=center;fontSize=9;" vertex="1" connectable="0" parent="e_med_prop">
+          <mxGeometry x="-0.2" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+        <mxCell id="e_not_prop" style="endArrow=open;html=1;dashed=1;dashPattern=4 4;strokeColor=#d79b00;exitX=0;exitY=0.35;entryX=0.85;entryY=1;" edge="1" parent="1" source="t_notif" target="t_prop">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="440" y="1180" /><mxPoint x="320" y="1180" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="e_not_prop_l" value="propertyId" style="edgeLabel;html=1;fontSize=9;fontColor=#d79b00;" vertex="1" connectable="0" parent="e_not_prop">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint x="-20" y="8" as="offset" /></mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="erd_dd" name="02 — Data dictionary &amp; chuẩn hóa">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="750" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title_p2" value="&lt;b&gt;Trang 2 — Data dictionary &amp; ghi chú chuẩn hóa&lt;/b&gt;&lt;br/&gt;&lt;font style=&#x27;font-size:11px&#x27;&gt;Dùng khi viết DDL / migration từ prototype&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=15;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="60" y="40" width="900" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="t_dd" value="&lt;b&gt;Từ điển dữ liệu — properties (59 keys gộp từ db.json)&lt;/b&gt;&lt;hr/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27;&gt;&lt;b&gt;PK&lt;/b&gt; id | &lt;b&gt;FK&lt;/b&gt; createdBy_id→users, pos_id→pos&lt;br/&gt;&lt;b&gt;Địa chỉ&lt;/b&gt; address, district, ward, futureWard, propertyCode&lt;br/&gt;&lt;b&gt;Giá &amp;amp; diện tích&lt;/b&gt; price, priceUnit, price_display, area, width, length&lt;br/&gt;&lt;b&gt;Công trình&lt;/b&gt; type, propertyType, bedrooms, bathrooms, floor, direction, road_width&lt;br/&gt;&lt;b&gt;Pháp lý &amp;amp; mô tả&lt;/b&gt; legal | legalStatus, condition, source, furniture, description, images[]&lt;br/&gt;&lt;b&gt;L1 Kho&lt;/b&gt; level1_status, statusLv1, warehouse_type, rejection_reason, rejected_reason, rejected_at&lt;br/&gt;&lt;b&gt;L2 Tin&lt;/b&gt; level2_status, statusLv2&lt;br/&gt;&lt;b&gt;POS snapshot&lt;/b&gt; pos_name, pos_manager, approvedBy, approvedAt | approved_at&lt;br/&gt;&lt;b&gt;Unsource&lt;/b&gt; unsource_note, unsourceRequestedAt/By, unsourceApprovedAt/By&lt;br/&gt;&lt;b&gt;Update workflow&lt;/b&gt; pending_update_payload, update_request_status, update_requested_at/by/_id&lt;br/&gt;update_request_note, update_rejected_at/by, update_rejection_reason&lt;br/&gt;&lt;b&gt;Audit&lt;/b&gt; createdAt, updatedAt, createdBy (denorm)&lt;br/&gt;&lt;/font&gt;&lt;hr/&gt;&lt;b&gt;listings (26 keys)&lt;/b&gt;&lt;br/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27;&gt;PK id | FK property_id, createdBy_id&lt;br/&gt;title, description, contact_phone, images[], videos[]&lt;br/&gt;listing_status, approved*, rejected*, prev_rejection_note&lt;br/&gt;unlist_*, approvedUnlist*&lt;br/&gt;createdAt, updatedAt, expiredAt&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fillColor=#ffffff;strokeColor=#0047AB;strokeWidth=2;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="110" width="540" height="540" as="geometry" />
+        </mxCell>
+        <mxCell id="t_dd2" value="&lt;b&gt;users (8) · pos (4) · notifications (7)&lt;/b&gt;&lt;hr/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27;&gt;&lt;b&gt;users:&lt;/b&gt; id, name, email, phone?, role, status, pos_id, pos_name&lt;br/&gt;&lt;b&gt;pos:&lt;/b&gt; id, name, manager, status&lt;br/&gt;&lt;b&gt;notifications:&lt;/b&gt; id, propertyId, recipient, message, type, createdAt, isRead&lt;/font&gt;&lt;hr/&gt;&lt;b&gt;logs (tối đa 11 keys / bản ghi)&lt;/b&gt;&lt;br/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27;&gt;id, timestamp, action, entityId, user&lt;br/&gt;reason?, changesPreview[], changes[] {field, old?, new}&lt;br/&gt;approvalKind?, approver?, changedAt?&lt;/font&gt;&lt;hr/&gt;&lt;b&gt;mediaLibrary&lt;/b&gt; (chưa có bản ghi mẫu trong db — schema từ code POST)&lt;br/&gt;listingId, property_id, kind, source, url, fileName, mimeType?, fileSize?, createdAt, createdBy, createdBy_id" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fillColor=#f8fbff;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="630" y="110" width="520" height="420" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="erd_br" name="03 — Traceability Feature → Entity">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title_p3" value="&lt;b&gt;Trang 3 — Traceability Feature → Entity / Trường dữ liệu&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=15;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="60" y="40" width="800" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="t_br" value="&lt;b&gt;Ánh xạ Feature demo → thực thể (ITBA traceability)&lt;/b&gt;&lt;hr/&gt;&lt;font face=&#x27;Consolas&#x27; size=&#x27;1&#x27; color=&#x27;#333333&#x27;&gt;&lt;b&gt;F2&lt;/b&gt; Tạo / cập nhật tài sản → &lt;b&gt;properties&lt;/b&gt; (+ pending_update_payload, update_*); logs F2/F3&amp;#xa;&lt;b&gt;F3&lt;/b&gt; Duyệt kho POS → properties.warehouse_type, level1_status, approved*; notifications; logs&amp;#xa;&lt;b&gt;F4&lt;/b&gt; Soạn tin → &lt;b&gt;listings&lt;/b&gt; + POST &lt;b&gt;mediaLibrary&lt;/b&gt; (mediaLibraryIds trên FE)&amp;#xa;&lt;b&gt;F5 / F7&lt;/b&gt; Duyệt niêm yết / gỡ tin → listings.* ; đồng bộ properties.level2_status (BR-005 auto-sync)&amp;#xa;&lt;b&gt;F8&lt;/b&gt; Gỡ nguồn → properties.unsource* ; cascade listings ; BR-010 chặn khi đang niêm yết&amp;#xa;&lt;b&gt;F9&lt;/b&gt; Giám sát kho → đọc properties (masking theo pos_id, BR-013)&amp;#xa;&lt;b&gt;F10&lt;/b&gt; IAM → &lt;b&gt;users&lt;/b&gt;, &lt;b&gt;pos&lt;/b&gt; ; ma trận quyền hiện lưu localStorage (ngoài ERD — cần bảng role_permission khi production)&amp;#xa;&lt;b&gt;F11&lt;/b&gt; Export CSV → đọc &lt;b&gt;logs&lt;/b&gt;&amp;#xa;&lt;b&gt;F12&lt;/b&gt; Dashboard → aggregate properties + listings (read-only)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=8;spacingTop=6;fillColor=#e8f4ff;strokeColor=#0047AB;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="100" width="1100" height="520" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

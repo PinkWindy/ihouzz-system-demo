@@ -6,12 +6,18 @@ import {
   postAuditLog,
   postInAppNotification,
   buildLogAction,
+  AUDIT_ACTION_TYPE,
   REJECT_REASON_MIN,
   ADJUSTMENT_NOTE_MIN,
   LISTING_APPROVAL_VALID_DAYS,
   formatListingId,
+  formatPropertyId,
+  confirmDuplicateListingWarningAsync,
+  listingRequestHeaders,
+  resolveDuplicateListing409,
 } from '../utils/listingWorkflow';
 import ListingWebsitePreviewModal from '../components/ListingWebsitePreviewModal';
+import { formatPropertyPriceDisplay } from '../utils/permissions';
 
 function ListingMediaReadonly({ listing }) {
   const imgs = Array.isArray(listing.images) ? listing.images.filter(Boolean) : [];
@@ -69,6 +75,7 @@ const STATUS_META = {
   'Từ chối': { tone: 'danger', icon: '✕' },
   'Yêu cầu gỡ tin': { tone: 'secondary', icon: '🔻' },
   'Đã gỡ': { tone: 'dark', icon: '🚫' },
+  'Hết hạn': { tone: 'secondary', icon: '⏱' },
 };
 
 function toneToBadge(tone) {
@@ -85,6 +92,14 @@ export default function Feature5_MKTApproval() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
   const [panelTab, setPanelTab] = useState('review'); // review | history
+  const now5 = new Date();
+  const y = now5.getFullYear();
+  const m = String(now5.getMonth() + 1).padStart(2, '0');
+  const d = String(now5.getDate()).padStart(2, '0');
+  const todayStr5 = `${y}-${m}-${d}`;
+  const firstDayOfMonth5 = `${y}-${m}-01`;
+  const [dateFrom, setDateFrom] = useState(firstDayOfMonth5);
+  const [dateTo, setDateTo] = useState(todayStr5);
 
   /** Soạn thảo trong panel duyệt */
   const [draftTitle, setDraftTitle] = useState('');
@@ -144,8 +159,18 @@ export default function Feature5_MKTApproval() {
       if (filterStatus === 'approved') return l.listing_status === 'Đã duyệt';
       if (filterStatus === 'rejected') return l.listing_status === 'Từ chối';
       return true;
+    }).filter((l) => {
+      if (!dateFrom && !dateTo) return true;
+      const fields = [l.createdAt, l.updatedAt, l.approvedAt];
+      return fields.some(d => {
+        if (!d) return false;
+        const day = d.slice(0, 10);
+        if (dateFrom && day < dateFrom) return false;
+        if (dateTo && day > dateTo) return false;
+        return true;
+      });
     });
-  }, [scopedListings, filterStatus]);
+  }, [scopedListings, filterStatus, dateFrom, dateTo]);
 
   const selected = useMemo(() => scopedListings.find((l) => l.id === selectedId) || null, [scopedListings, selectedId]);
 
@@ -211,41 +236,100 @@ export default function Feature5_MKTApproval() {
       return;
     }
     setAdjustError('');
-    setSubmitting(true);
+    
     const prop = getProperty(selected.property_id);
+    const dupConfirm = await confirmDuplicateListingWarningAsync({
+      listings,
+      propertyRef: selected.property_id,
+      propertyCode: prop?.propertyCode || selected.property_id,
+      excludeListingId: selected.id,
+      actionPrompt:
+        'Bạn có chắc chắn muốn PHÊ DUYỆT tin đăng này không? (Chọn OK để tiếp tục — vẫn được duyệt sau khi đồng ý.)',
+      audit: {
+        userName: u.name || u.email || 'MKT',
+        userId: u.id || '',
+        propertyId: selected.property_id,
+        listingId: selected.id,
+        screen: 'F5',
+        action: 'LISTING_APPROVE',
+      },
+    });
+    if (!dupConfirm.ok) return;
+
+    setSubmitting(true);
     const now = new Date().toISOString();
     const expiredAt = new Date(Date.now() + LISTING_APPROVAL_VALID_DAYS * 24 * 3600 * 1000).toISOString();
     const oldStatus = selected.listing_status;
     const wasEdited = contentEdited;
 
     try {
-      await fetch(`${API}/listings/${selected.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: draftTitle.trim(),
-          description: draftDesc.trim(),
-          listing_status: 'Đã duyệt',
-          approvedBy: u.name || 'MKT',
-          approvedBy_id: u.id || '',
-          approvedAt: now,
-          updatedAt: now,
-          expiredAt,
-          lastMktAdjustmentNote: wasEdited ? adjustmentNote.trim() : null,
-          lastMktEditedAt: wasEdited ? now : null,
-        }),
+      const patchBody = JSON.stringify({
+        title: draftTitle.trim(),
+        description: draftDesc.trim(),
+        listing_status: 'Đã duyệt',
+        approvedBy: u.name || 'MKT',
+        approvedBy_id: u.id || '',
+        approvedAt: now,
+        updatedAt: now,
+        expiredAt,
+        lastMktAdjustmentNote: wasEdited ? adjustmentNote.trim() : null,
+        lastMktEditedAt: wasEdited ? now : null,
       });
+      const doPatch = (force) =>
+        fetch(`${API}/listings/${selected.id}`, {
+          method: 'PATCH',
+          headers: listingRequestHeaders(force),
+          body: patchBody,
+        });
+      let patchRes = await doPatch(dupConfirm.forceDuplicate);
+      if (patchRes.status === 409) {
+        const retried = await resolveDuplicateListing409(
+          patchRes,
+          (force) => doPatch(force),
+          {
+            listings,
+            propertyRef: selected.property_id,
+            propertyCode: prop?.propertyCode || selected.property_id,
+            excludeListingId: selected.id,
+            actionPrompt:
+              'Bạn có chắc chắn muốn PHÊ DUYỆT tin đăng này không? (Chọn OK để tiếp tục — vẫn được duyệt sau khi đồng ý.)',
+            audit: {
+              userName: u.name || u.email || 'MKT',
+              userId: u.id || '',
+              propertyId: selected.property_id,
+              listingId: selected.id,
+              screen: 'F5',
+              action: 'LISTING_APPROVE',
+            },
+          },
+        );
+        if (retried === null) {
+          setSubmitting(false);
+          return;
+        }
+        patchRes = retried;
+      }
+      if (!patchRes.ok) throw new Error(`PATCH listing ${patchRes.status}`);
       if (prop?.id) {
-        await fetch(`${API}/properties/${prop.id}`, {
+        const pid = encodeURIComponent(prop.id);
+        await fetch(`${API}/properties/${pid}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ level2_status: 'Đang niêm yết', updatedAt: now }),
+          body: JSON.stringify({ level2_status: 'Đang niêm yết', statusLv2: 'Đang niêm yết', updatedAt: now, mktApproveBy: u.name || 'MKT', mktApproveAt: now }),
         });
       }
 
       const verb = wasEdited ? 'Chỉnh sửa & Duyệt niêm yết' : 'Duyệt niêm yết';
+      const modifiedFields = wasEdited
+        ? {
+            title: { from: baselineTitle || '', to: draftTitle.trim() },
+            description: { from: baselineDesc || '', to: draftDesc.trim() },
+            adjustment_note: adjustmentNote.trim(),
+          }
+        : undefined;
       await postAuditLog({
         actionText: buildLogAction(verb, selected.id, wasEdited ? `Điều chỉnh: ${adjustmentNote.trim().slice(0, 160)}` : `TS ${selected.property_id}`),
+        actionType: wasEdited ? AUDIT_ACTION_TYPE.LISTING_APPROVE_WITH_ADJUSTMENT : AUDIT_ACTION_TYPE.LISTING_APPROVE,
         listingId: selected.id,
         userName: u.name || u.email || 'MKT',
         userId: u.id || '',
@@ -253,6 +337,7 @@ export default function Feature5_MKTApproval() {
         oldStatus,
         newStatus: 'Đã duyệt',
         detail: wasEdited ? adjustmentNote.trim() : undefined,
+        modifiedFields,
       });
 
       await postInAppNotification({
@@ -303,7 +388,7 @@ export default function Feature5_MKTApproval() {
       });
       const rejProp = getProperty(selected.property_id);
       if (rejProp?.id) {
-        await fetch(`${API}/properties/${encodeURIComponent(rejProp.id)}`, {
+        await fetch(`${API}/properties/${encodeURIComponent(String(rejProp.id))}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -342,8 +427,11 @@ export default function Feature5_MKTApproval() {
   };
 
   const prop = selected ? getProperty(selected.property_id) : null;
+  const rawPidMkt = user.pos_id;
+  const posIdMkt = rawPidMkt === '' || rawPidMkt == null ? null : Number(rawPidMkt);
+  const POS_ID_MKT = Number.isNaN(posIdMkt) ? null : posIdMkt;
   const priceText = prop
-    ? prop.price_display || `${Number(prop.price || 0).toLocaleString('en-US')} ${prop.priceUnit || 'VNĐ'}`
+    ? formatPropertyPriceDisplay(user.role, prop, POS_ID_MKT, user.pos_name || '')
     : '';
 
   return (
@@ -352,10 +440,10 @@ export default function Feature5_MKTApproval() {
         <div className="px-4 py-3 mx-auto d-flex flex-wrap align-items-center justify-content-between gap-3" style={{ maxWidth: 1400 }}>
           <div>
             <div className="text-uppercase small fw-bold text-muted mb-1" style={{ letterSpacing: '0.1em' }}>
-              UC005 · Kiểm duyệt niêm yết
+              Kiểm duyệt niêm yết
             </div>
             <h4 className="fw-bold mb-0 text-dark">Trung tâm phê duyệt bài đăng</h4>
-            <small className="text-muted">Actor: Marketing / Admin · BR-003 AUTO-SYNC Lv2 khi duyệt</small>
+            <small className="text-muted">Marketing / Admin — khi duyệt, trạng thái niêm yết trên tài sản được đồng bộ tự động.</small>
           </div>
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <span className="badge rounded-pill bg-light text-dark border px-3 py-2">{user.name}</span>
@@ -404,22 +492,31 @@ export default function Feature5_MKTApproval() {
             <div className="card border-0 shadow-sm h-100" style={{ borderRadius: 12 }}>
               <div className="card-header bg-white border-0 py-3 fw-semibold d-flex flex-wrap gap-2 align-items-center">
                 <span>Danh sách ({filtered.length})</span>
-                <div className="ms-auto btn-group btn-group-sm">
-                  {[
-                    ['pending', 'Chờ'],
-                    ['approved', 'Đã duyệt'],
-                    ['rejected', 'Từ chối'],
-                    ['all', 'Tất cả'],
-                  ].map(([k, lab]) => (
-                    <button
-                      key={k}
-                      type="button"
-                      className={`btn ${filterStatus === k ? 'btn-dark' : 'btn-outline-secondary'}`}
-                      onClick={() => setFilterStatus(k)}
-                    >
-                      {lab}
-                    </button>
-                  ))}
+                <div className="ms-auto d-flex flex-wrap gap-1 align-items-center">
+                  <div className="btn-group btn-group-sm me-1">
+                    {[
+                      ['pending', 'Chờ'],
+                      ['approved', 'Đã duyệt'],
+                      ['rejected', 'Từ chối'],
+                      ['all', 'Tất cả'],
+                    ].map(([k, lab]) => (
+                      <button
+                        key={k}
+                        type="button"
+                        className={`btn ${filterStatus === k ? 'btn-dark' : 'btn-outline-secondary'}`}
+                        onClick={() => setFilterStatus(k)}
+                      >
+                        {lab}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="d-flex gap-1 align-items-center">
+                    <span className="input-group-text bg-white border rounded-start" style={{fontSize:11}}><i className="bi bi-calendar3"></i></span>
+                    <input type="date" className="form-control form-control-sm" style={{width:130}} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+                    <span className="small text-muted">—</span>
+                    <input type="date" className="form-control form-control-sm" style={{width:130}} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+                    {(dateFrom || dateTo) && <button className="btn btn-outline-secondary btn-sm" onClick={() => { setDateFrom(''); setDateTo(''); }}>×</button>}
+                  </div>
                 </div>
               </div>
               <div className="list-group list-group-flush overflow-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
@@ -442,12 +539,12 @@ export default function Feature5_MKTApproval() {
                     >
                       <div className="d-flex justify-content-between align-items-start gap-2">
                         <div>
-                          <div className="fw-bold text-dark">{formatListingId(l.id)}</div>
+                          <div className="fw-bold text-dark">{formatListingId(l.listingCode || l.id)}</div>
                           <div className="small text-muted text-truncate" style={{ maxWidth: 220 }} title={l.title}>
                             {l.title}
                           </div>
                           <div className="small mt-1">
-                            <span className="text-muted">{p?.id || l.property_id}</span>
+                            <span className="text-muted">{formatPropertyId(p?.propertyCode || p?.id || l.property_id)}</span>
                             {p?.pos_name && <span className="ms-2 badge bg-light text-dark border">{p.pos_name}</span>}
                           </div>
                         </div>
@@ -455,7 +552,9 @@ export default function Feature5_MKTApproval() {
                           {meta.icon} {l.listing_status}
                         </span>
                       </div>
-                      <div className="small text-muted mt-2">Người soạn: {l.createdBy}</div>
+                      <div className="small text-muted mt-2">
+                        Người soạn: {l.createdBy} · Ngày tạo: {l.createdAt ? new Date(l.createdAt).toLocaleDateString('vi-VN') : '—'}
+                      </div>
                     </button>
                   );
                 })}
@@ -476,7 +575,7 @@ export default function Feature5_MKTApproval() {
             {selected && (
               <div className="card border-0 shadow-sm" style={{ borderRadius: 12 }}>
                 <div className="card-header bg-white border-bottom py-3 d-flex flex-wrap align-items-center gap-2">
-                  <div className="fw-bold fs-5">{formatListingId(selected.id)}</div>
+                  <div className="fw-bold fs-5">{formatListingId(selected.listingCode || selected.id)}</div>
                   <span className={`badge bg-${toneToBadge((STATUS_META[selected.listing_status] || {}).tone)}`}>
                     {selected.listing_status}
                   </span>
@@ -510,7 +609,7 @@ export default function Feature5_MKTApproval() {
                           <div className="small text-muted">{new Date(lg.timestamp).toLocaleString('vi-VN')}</div>
                           <div className="fw-semibold">{lg.user || '—'}</div>
                           <div className="small mt-1" style={{ whiteSpace: 'pre-wrap' }}>
-                            {lg.action}
+                            {lg.action ? lg.action.replace(selected.id, formatListingId(selected.listingCode || selected.id)).replace(selected.property_id, formatPropertyId(prop?.propertyCode || prop?.id || selected.property_id)) : '—'}
                           </div>
                           {lg.old_status && lg.new_status && (
                             <div className="small mt-1">
@@ -519,12 +618,27 @@ export default function Feature5_MKTApproval() {
                               <span className="badge bg-light text-dark border ms-1">{lg.new_status}</span>
                             </div>
                           )}
+                          {lg.action_type && (
+                            <div className="small mt-1">
+                              <span className="badge bg-secondary bg-opacity-25 text-dark border">action_type: {lg.action_type}</span>
+                            </div>
+                          )}
+                          {lg.modified_fields && typeof lg.modified_fields === 'object' && (
+                            <details className="small mt-1">
+                              <summary className="text-primary" style={{ cursor: 'pointer' }}>
+                                modified_fields (MKT chỉnh sửa)
+                              </summary>
+                              <pre className="bg-light border rounded p-2 mt-1 mb-0" style={{ fontSize: 11, maxHeight: 160, overflow: 'auto' }}>
+                                {JSON.stringify(lg.modified_fields, null, 2)}
+                              </pre>
+                            </details>
+                          )}
                           {lg.reason && (
                             <div className="small text-danger mt-1">
                               <strong>Lý do:</strong> {lg.reason}
                             </div>
                           )}
-                          {lg.detail && !lg.reason && (
+                          {lg.detail && !(lg.reason && lg.detail === lg.reason) && (
                             <div className="small text-muted mt-1">{lg.detail}</div>
                           )}
                         </li>
@@ -559,6 +673,10 @@ export default function Feature5_MKTApproval() {
                               Người soạn tin
                             </div>
                             <div>{selected.createdBy}</div>
+                            <div className="text-muted small mt-1">
+                              <i className="bi bi-calendar2-check me-1"></i>
+                              Ngày tạo: {selected.createdAt ? new Date(selected.createdAt).toLocaleString('vi-VN', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}
+                            </div>
                             {selected.listing_status === 'Chờ duyệt chỉnh sửa' && selected.resubmit_note && (
                               <div className="mt-2 p-2 bg-info bg-opacity-10 rounded small">
                                 <strong>Ghi chú gửi lại:</strong> {selected.resubmit_note}

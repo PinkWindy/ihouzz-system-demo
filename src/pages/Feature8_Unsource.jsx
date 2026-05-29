@@ -1,13 +1,59 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import {
+  API,
+  readSessionUser,
+  SESSION_CHANGED_EVENT,
+  postEntityAudit,
+  AUDIT_ACTION_TYPE,
+} from '../utils/listingWorkflow.js';
 
-const API = 'http://localhost:5000';
+/** Đồng bộ F7/F9 — map `readSessionUser()` sang shape F8 (POS / role). */
+function authFromSessionUser(u) {
+  if (!u || u.role === 'guest') {
+    return { role: 'sales', pos_name: '', pos_id: null, user_id: '', name: '', email: '' };
+  }
+  const role = u.role || 'sales';
+  const posNameRaw = role === 'admin' ? null : u.pos_name || '';
+  const rawPid = u.pos_id;
+  const pos_id = rawPid === '' || rawPid == null ? null : Number(rawPid);
+  return {
+    role,
+    pos_name: posNameRaw == null ? '' : String(posNameRaw),
+    pos_id: Number.isNaN(pos_id) ? null : pos_id,
+    user_id: String(u.id ?? ''),
+    name: u.name || '',
+    email: u.email || '',
+  };
+}
 
-const userStr = localStorage.getItem('user');
-const userObj = userStr ? JSON.parse(userStr) : {};
-const rawRole = userObj.role || 'sales';
-const ROLE = rawRole === 'pos' ? 'pos_manager' : rawRole === 'mkt' ? 'marketing' : rawRole;
-const currentPosName = userObj.pos_name || '';
-const USER_ID = userObj.id || '';
+/** Ngày local YYYY-MM-DD — đồng bộ F3/F7 (tránh lệch UTC `toISOString`). */
+function formatLocalYmd(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function defaultF8DateRange() {
+  const now = new Date();
+  return {
+    from: formatLocalYmd(new Date(now.getFullYear(), now.getMonth(), 1)),
+    to: formatLocalYmd(now),
+  };
+}
+
+function normalizeJsonList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+function statusBadgeClass(bgKey) {
+  const k = bgKey || 'secondary';
+  if (k === 'light') return 'badge bg-light text-dark border';
+  if (k === 'warning') return 'badge bg-warning text-dark';
+  return `badge bg-${k}`;
+}
 
 const CAN_UNSOURCE = ['Chưa niêm yết', 'Thẩm định phí'];
 
@@ -18,6 +64,14 @@ const STATUS_CONFIG = {
   'Đã gỡ nguồn':         { bg: 'dark',    text: 'white', icon: '🚫' },
 };
 
+/** L2 tài sản — tone đồng bộ F7 `StatusBadge`. */
+const L2_PROPERTY_BADGE = {
+  'Chưa niêm yết': 'secondary',
+  'Đang niêm yết': 'success',
+  'Thẩm định phí': 'info',
+  'Đã gỡ nguồn': 'dark',
+};
+
 // Format mã LS chuẩn
 const formatLSId = (id) => {
   if (!id) return '';
@@ -26,32 +80,69 @@ const formatLSId = (id) => {
 };
 
 export default function Feature8_Unsource() {
+  const [user, setUser] = useState(() => readSessionUser());
+  const auth = useMemo(() => authFromSessionUser(user), [user]);
+  const { role: ROLE, pos_name: currentPosName, name: userName } = auth;
+
   const [properties, setProperties] = useState([]);
   const [selected, setSelected] = useState(null);
   const [mode, setMode] = useState(null); // 'request' | 'approve' | 'reject' | 'view'
   const [unsourceNote, setUnsourceNote] = useState('');
   const [rejectNote, setRejectNote] = useState('');
-  const [filterStatus, setFilterStatus] = useState(ROLE === 'sales' ? 'eligible' : 'pending');
+  const [filterStatus, setFilterStatus] = useState(() =>
+    authFromSessionUser(readSessionUser()).role === 'sales' ? 'eligible' : 'pending',
+  );
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
+  const { from: f8From, to: f8To } = defaultF8DateRange();
+  const [dateFrom, setDateFrom] = useState(f8From);
+  const [dateTo, setDateTo] = useState(f8To);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    const bump = () => setUser(readSessionUser());
+    window.addEventListener('storage', bump);
+    window.addEventListener(SESSION_CHANGED_EVENT, bump);
+    return () => {
+      window.removeEventListener('storage', bump);
+      window.removeEventListener(SESSION_CHANGED_EVENT, bump);
+    };
+  }, []);
 
-  const loadData = async () => {
-    const p = await fetch(`${API}/properties`).then(r => r.json());
-    setProperties(p);
-  };
+  const prevIdentityRef = useRef('');
+  useEffect(() => {
+    const key = `${auth.user_id}|${auth.role}`;
+    if (prevIdentityRef.current === key) return;
+    prevIdentityRef.current = key;
+    setFilterStatus(auth.role === 'sales' ? 'eligible' : 'pending');
+  }, [auth.user_id, auth.role]);
+
+  const loadData = useCallback(async () => {
+    try {
+      const raw = await fetch(`${API}/properties`).then((r) => r.json());
+      setProperties(normalizeJsonList(raw));
+    } catch (_) {
+      setProperties([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4500);
   };
 
-  const postLog = async (action, entityId) => {
-    await fetch(`${API}/logs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timestamp: new Date().toISOString(), action, entityId, user: userObj.name || 'Demo User' }),
+  const postLog = async (action, entityId, actionType, opts = {}) => {
+    await postEntityAudit({
+      action,
+      entityId,
+      actionType,
+      user: auth.name || userName || 'Demo User',
+      user_id: auth.user_id || '',
+      property_id: entityId,
+      ...opts,
     });
   };
 
@@ -60,7 +151,21 @@ export default function Feature8_Unsource() {
     body: JSON.stringify({ ...data, updatedAt: new Date().toISOString() }),
   });
 
-  const filtered = properties.filter(p => {
+  const applyDateRange8 = (list) => {
+    if (!dateFrom && !dateTo) return list;
+    return list.filter(p => {
+      const fields = [p.createdAt, p.updatedAt, p.unsourceRequestedAt, p.unsourceApprovedAt, p.unsourceRejectedAt];
+      return fields.some(d => {
+        if (!d) return false;
+        const day = d.slice(0, 10);
+        if (dateFrom && day < dateFrom) return false;
+        if (dateTo && day > dateTo) return false;
+        return true;
+      });
+    });
+  };
+
+  const filtered = applyDateRange8(properties.filter(p => {
     // Lọc theo POS: admin thấy hết, còn lại thấy POS mình
     if (ROLE !== 'admin' && p.pos_name !== currentPosName) return false;
 
@@ -70,7 +175,7 @@ export default function Feature8_Unsource() {
     if (filterStatus === 'pending') return p.level1_status === 'Chờ duyệt gỡ nguồn';
     if (filterStatus === 'approved') return p.level1_status === 'Đã gỡ nguồn';
     return true; // 'all'
-  });
+  }));
 
   const eligibleCount = properties.filter(p => (ROLE === 'admin' || p.pos_name === currentPosName) && ['Được duyệt','Được đảm bảo'].includes(p.level1_status) && p.level1_status !== 'Đã gỡ nguồn' && p.level1_status !== 'Chờ duyệt gỡ nguồn').length;
   const pendingCount = properties.filter(p => (ROLE === 'admin' || p.pos_name === currentPosName) && p.level1_status === 'Chờ duyệt gỡ nguồn').length;
@@ -80,17 +185,21 @@ export default function Feature8_Unsource() {
   const handleRequestUnsource = async () => {
     const canDo = CAN_UNSOURCE.includes(selected.level2_status);
     if (!canDo) {
-      showToast('⛔ BR-010: Phải Gỡ tin (F6→F7) trước khi Gỡ nguồn!', 'danger');
+      showToast('Cần gỡ tin (yêu cầu tạm ngưng niêm yết và được duyệt) trước khi gỡ nguồn.', 'danger');
       return;
     }
     setSubmitting(true);
     await patchProp(selected.id, {
       level1_status: 'Chờ duyệt gỡ nguồn',
+      /** Lưu L1 trước yêu cầu để UC009 từ chối khôi phục đúng (Được duyệt / Được đảm bảo). */
+      prev_level1: selected.level1_status,
       unsource_note: unsourceNote,
       unsourceRequestedAt: new Date().toISOString(),
-      unsourceRequestedBy: userObj.name || 'Đầu chủ',
+      unsourceRequestedBy: userName || 'Đầu chủ',
     });
-    await postLog(`[F8-UC008] Sales yêu cầu gỡ nguồn · Ghi chú: ${unsourceNote || 'N/A'}`, selected.id);
+    await postLog(`Đầu chủ yêu cầu gỡ nguồn · Ghi chú: ${unsourceNote || '—'}`, selected.id, AUDIT_ACTION_TYPE.PROPERTY_F8_UNSOURCE_REQUEST, {
+      detail: unsourceNote || undefined,
+    });
     showToast(`✅ Đã gửi yêu cầu gỡ nguồn ${selected.id} đến GĐ POS.`);
     setSelected(null); setMode(null); setUnsourceNote('');
     setSubmitting(false); loadData();
@@ -102,17 +211,19 @@ export default function Feature8_Unsource() {
     const now = new Date().toISOString();
     await patchProp(selected.id, {
       level1_status: 'Đã gỡ nguồn', level2_status: 'Đã gỡ nguồn',
-      unsourceApprovedBy: userObj.name || 'GĐ POS', unsourceApprovedAt: now,
+      prev_level1: null,
+      unsourceApprovedBy: userName || 'GĐ POS', unsourceApprovedAt: now,
     });
     try {
-      const allListings = await fetch(`${API}/listings`).then(r => r.json());
+      const allRaw = await fetch(`${API}/listings`).then((r) => r.json());
+      const allListings = normalizeJsonList(allRaw);
       const related = allListings.filter(l => l.property_id === selected.id && l.listing_status !== 'Đã gỡ');
       await Promise.all(related.map(l => fetch(`${API}/listings/${l.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ listing_status: 'Đã gỡ', updatedAt: now }),
       })));
     } catch (_) {}
-    await postLog(`[F8-UC009] GĐ POS duyệt gỡ nguồn → Lv1+Lv2="Đã gỡ nguồn" + CASCADE listings`, selected.id);
+    await postLog(`GĐ POS duyệt gỡ nguồn → Lv1+Lv2 «Đã gỡ nguồn», đồng bộ tin đăng`, selected.id, AUDIT_ACTION_TYPE.PROPERTY_F8_UNSOURCE_APPROVE);
     showToast(`✅ Đã duyệt gỡ nguồn ${selected.id}. Tài sản ẩn khỏi mặc định. Listings liên quan đã gỡ.`);
     setSelected(null); setMode(null);
     setSubmitting(false); loadData();
@@ -124,28 +235,32 @@ export default function Feature8_Unsource() {
     setSubmitting(true);
     const prev = selected.prev_level1 || 'Được duyệt';
     await patchProp(selected.id, {
-      level1_status: prev, unsource_note: null,
-      unsourceRejectedBy: userObj.name || 'GĐ POS',
+      level1_status: prev,
+      prev_level1: null,
+      unsource_note: null,
+      unsourceRejectedBy: userName || 'GĐ POS',
       unsourceRejectedAt: new Date().toISOString(),
       unsourceRejectNote: rejectNote,
     });
-    await postLog(`[F8-UC009] GĐ POS từ chối gỡ nguồn · Lý do: ${rejectNote}`, selected.id);
+    await postLog(`GĐ POS từ chối gỡ nguồn · Lý do: ${rejectNote}`, selected.id, AUDIT_ACTION_TYPE.PROPERTY_F8_UNSOURCE_REJECT, {
+      reason: rejectNote,
+    });
     showToast(`↩️ Đã từ chối gỡ nguồn ${selected.id}. Tài sản phục hồi trạng thái.`, 'warning');
     setSelected(null); setMode(null); setRejectNote('');
     setSubmitting(false); loadData();
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#fff8f0', padding: '24px' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--ih-main-bg, #fff8f0)', padding: '24px' }}>
       {/* Header */}
       <div className="d-flex align-items-center justify-content-between mb-4">
         <div>
           <h4 className="fw-bold mb-0" style={{ color: '#7b2d00' }}>
-            <i className="bi bi-x-octagon-fill text-danger me-2"></i>Feature 8 – Gỡ Nguồn Tài Sản (UC008 + UC009)
+            <i className="bi bi-x-octagon-fill text-danger me-2"></i>Gỡ nguồn tài sản
           </h4>
-          <small className="text-muted">Đầu chủ yêu cầu & GĐ POS duyệt | BR-010 Validation</small>
+          <small className="text-muted">Đầu chủ yêu cầu · GĐ POS phê duyệt</small>
         </div>
-        <span className="badge bg-danger px-3 py-2">BR-010: Gỡ tin trước khi Gỡ nguồn</span>
+        <span className="badge bg-danger px-3 py-2">Gỡ tin trước khi gỡ nguồn</span>
       </div>
 
       {toast && (
@@ -182,12 +297,35 @@ export default function Feature8_Unsource() {
         {/* Properties list */}
         <div className="col-12">
           <div className="card border-0 shadow-sm">
-            <div className="card-header border-0 d-flex align-items-center justify-content-between" style={{ background: '#fdede8' }}>
+            <div className="card-header border-0 d-flex align-items-center justify-content-between flex-wrap gap-2" style={{ background: '#fdede8' }}>
               <span className="fw-bold"><i className="bi bi-list-ul me-1"></i>Danh sách Tài sản ({filtered.length})</span>
-              <div className="btn-group btn-group-sm">
-                {[['eligible','🏢 Đủ ĐK gỡ'],['pending','⏳ Chờ POS duyệt'],['approved','✅ Đã gỡ'],['all','Tất cả']].map(([v, l]) => (
-                  <button key={v} className={`btn ${filterStatus === v ? 'btn-danger' : 'btn-outline-danger'}`} onClick={() => setFilterStatus(v)}>{l}</button>
-                ))}
+              <div className="d-flex flex-wrap gap-2 align-items-center">
+                <div className="btn-group btn-group-sm">
+                  {[['eligible','🏢 Đủ ĐK gỡ'],['pending','⏳ Chờ POS duyệt'],['approved','✅ Đã gỡ'],['all','Tất cả']].map(([v, l]) => (
+                    <button key={v} className={`btn ${filterStatus === v ? 'btn-danger' : 'btn-outline-danger'}`} onClick={() => setFilterStatus(v)}>{l}</button>
+                  ))}
+                </div>
+                <div className="d-flex gap-1 align-items-center">
+                  <span className="input-group-text bg-white border rounded" style={{fontSize:11}}><i className="bi bi-calendar3"></i></span>
+                  <input type="date" className="form-control form-control-sm" style={{width:120}} value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="Từ ngày" />
+                  <span className="small text-muted">—</span>
+                  <input type="date" className="form-control form-control-sm" style={{width:120}} value={dateTo} onChange={e => setDateTo(e.target.value)} title="Đến ngày" />
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => {
+                      const r = defaultF8DateRange();
+                      setDateFrom(r.from);
+                      setDateTo(r.to);
+                    }}
+                    title="Đặt lại: đầu tháng → hôm nay"
+                  >
+                    Đặt lại
+                  </button>
+                  {(dateFrom || dateTo) && (
+                    <button type="button" className="btn btn-outline-secondary btn-sm" title="Bỏ lọc ngày" onClick={() => { setDateFrom(''); setDateTo(''); }}>×</button>
+                  )}
+                </div>
               </div>
             </div>
             <div className="card-body p-0" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
@@ -214,13 +352,13 @@ export default function Feature8_Unsource() {
                       const isSelected = selected?.id === p.id;
                       return (
                         <tr key={p.id} className={`${isSelected ? 'bg-danger bg-opacity-10' : ''}`} style={{ cursor: 'pointer' }} onClick={() => { setSelected(p); setMode('view'); setRejectNote(''); setUnsourceNote(''); }}>
-                          <td><span className="badge bg-dark">{formatLSId(p.id)}</span></td>
+                          <td><span className="badge bg-dark">{formatLSId(p.propertyCode || p.id)}</span></td>
                           <td className="fw-semibold text-truncate" style={{ maxWidth: 200 }} title={p.address}>{p.address}</td>
                           <td><span className="badge bg-light text-dark border">{p.pos_name || '—'}</span></td>
                           <td>{p.createdBy}</td>
                           <td>{new Date(p.createdAt).toLocaleDateString('vi-VN')}</td>
-                          <td><span className={`badge bg-${cfg.bg} text-${cfg.text}`}>{cfg.icon} {p.level1_status}</span></td>
-                          <td><span className={`badge bg-${p.level2_status==='Đang niêm yết'?'success':'secondary'} text-white`}>{p.level2_status}</span></td>
+                          <td><span className={statusBadgeClass(cfg.bg)}>{cfg.icon} {p.level1_status}</span></td>
+                          <td><span className={statusBadgeClass(L2_PROPERTY_BADGE[p.level2_status] || 'secondary')}>{p.level2_status}</span></td>
                           <td className="text-end">
                             <i className="bi bi-arrow-right-circle-fill text-danger fs-5"></i>
                           </td>
@@ -253,11 +391,11 @@ export default function Feature8_Unsource() {
                     {/* Top Alert Action Bar */}
                     <div className="bg-white p-3 border-bottom shadow-sm d-flex justify-content-between align-items-center sticky-top" style={{ zIndex: 10 }}>
                       <div>
-                        <span className="badge bg-dark me-2">{prop.id}</span>
-                        <span className={`badge bg-${STATUS_CONFIG[prop.level1_status]?.bg} text-${STATUS_CONFIG[prop.level1_status]?.text} me-2`}>
+                        <span className="badge bg-dark me-2">{prop.propertyCode || prop.id}</span>
+                        <span className={`${statusBadgeClass(STATUS_CONFIG[prop.level1_status]?.bg || 'secondary')} me-2`}>
                           {STATUS_CONFIG[prop.level1_status]?.icon} L1: {prop.level1_status}
                         </span>
-                        <span className={`badge bg-${prop.level2_status==='Đang niêm yết'?'success':'secondary'} text-white me-2`}>
+                        <span className={`${statusBadgeClass(L2_PROPERTY_BADGE[prop.level2_status] || 'secondary')} me-2`}>
                           L2: {prop.level2_status}
                         </span>
                         <span className="text-muted small">Người tạo: {prop.createdBy}</span>
@@ -268,7 +406,7 @@ export default function Feature8_Unsource() {
                           canDoRequest ? (
                             <button className="btn btn-outline-danger fw-bold" onClick={() => setMode('request')}><i className="bi bi-x-octagon me-1"></i>Gửi Yêu cầu Gỡ nguồn</button>
                           ) : (
-                            <span className="badge bg-danger p-2"><i className="bi bi-shield-lock me-1"></i>Bị chặn bởi BR-010 (Phải Gỡ tin trước)</span>
+                            <span className="badge bg-danger p-2"><i className="bi bi-shield-lock me-1"></i>Cần gỡ tin trước</span>
                           )
                         )}
                         

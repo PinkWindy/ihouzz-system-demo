@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { mergePreviewImageUrls } from '../utils/listingWorkflow';
+import { mergePreviewImageUrls, readSessionUser } from '../utils/listingWorkflow';
+import { formatPropertyPriceDisplay } from '../utils/permissions';
 
 /**
  * Xem trước tin đăng theo layout tham chiếu ihouzz.com (gallery trái — thông tin phải — thuộc tính — nội dung — bản đồ minh họa).
@@ -41,10 +42,13 @@ export default function ListingWebsitePreviewModal({
 
   const safeSlide = imageUrls.length ? Math.min(slide, imageUrls.length - 1) : 0;
   const main = imageUrls[safeSlide];
-  const priceText =
-    property?.price_display ||
-    (property && Number(property.price || 0).toLocaleString('en-US') + ' ' + (property.priceUnit || 'VNĐ')) ||
-    '—';
+  const session = readSessionUser();
+  const rawPid = session.pos_id;
+  const posIdNum = rawPid === '' || rawPid == null ? null : Number(rawPid);
+  const posId = Number.isNaN(posIdNum) ? null : posIdNum;
+  const priceText = property
+    ? formatPropertyPriceDisplay(session.role, property, posId, session.pos_name || '')
+    : '—';
   const addr = property?.address || '—';
   const pt = property?.propertyType || '—';
   const area = property?.area != null ? `${Number(property.area).toLocaleString('en-US')} m²` : '—';

@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "api": "json-server db.json --port 5000",
+    "api": "node api-server.mjs",
+    "api:plain": "json-server db.json --port 5000",
     "test": "vitest run",
     "test:watch": "vitest"
   },

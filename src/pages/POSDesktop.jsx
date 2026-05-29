@@ -1,5 +1,7 @@
+import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { postEntityAudit, readSessionUser, AUDIT_ACTION_TYPE } from '../utils/listingWorkflow';
 
 function POSDesktop() {
   const [properties, setProperties] = useState([]);
@@ -9,8 +11,15 @@ function POSDesktop() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const logAudit = async (action, entityId) => {
-    await axios.post('http://localhost:5000/logs', {
-      timestamp: new Date().toISOString(), action, entityId, user: 'Admin/Manager'
+    const u = readSessionUser();
+    await postEntityAudit({
+      action,
+      actionType: AUDIT_ACTION_TYPE.MOBILE_AUDIT_GENERIC,
+      entityId: entityId != null ? String(entityId) : '',
+      property_id: entityId != null ? String(entityId) : '',
+      user: u.name || 'Admin/Manager',
+      user_id: u.id || '',
+      detail: 'POS Desktop (demo kho)',
     });
   };
 
@@ -20,17 +29,17 @@ function POSDesktop() {
   }, []);
 
   const fetchData = async () => {
-    const res = await axios.get('http://localhost:5000/properties');
+    const res = await axios.get(`\${API_BASE_URL}/properties`);
     setProperties(res.data);
   };
   const fetchLogs = async () => {
-    const res = await axios.get('http://localhost:5000/logs');
+    const res = await axios.get(`\${API_BASE_URL}/logs`);
     setLogs(res.data);
   };
 
   const handleAction = async (prop, newLv1, newLv2, actionName) => {
     const updated = { ...prop, statusLv1: newLv1 || prop.statusLv1, statusLv2: newLv2 || prop.statusLv2 };
-    await axios.put(`http://localhost:5000/properties/${prop.id}`, updated);
+    await axios.put(`\${API_BASE_URL}/properties/${prop.id}`, updated);
     await logAudit(actionName, prop.id);
     alert(`✅ Thành công: ${actionName}`);
     fetchData(); fetchLogs();
@@ -74,7 +83,7 @@ function POSDesktop() {
               <tbody>
                 {filteredProps.map(p => (
                   <tr key={p.id} className={p.statusLv1 === 'Đã gỡ nguồn' ? 'table-secondary opacity-50' : ''}>
-                    <td className="fw-bold text-primary">{p.id}</td>
+                    <td className="fw-bold text-primary">{p.propertyCode || p.id}</td>
                     <td><div>{p.address}</div><div className="small text-muted">{p.type} • {p.area}m2 • {p.price.toLocaleString()} VNĐ</div></td>
                     <td><span className="badge bg-secondary">{p.statusLv1}</span></td>
                     <td><span className="badge bg-dark">{p.statusLv2}</span></td>

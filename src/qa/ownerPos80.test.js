@@ -6,12 +6,23 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   isSamePosAsActor,
   shouldMaskAddress,
+  shouldMaskPrice,
+  formatPropertyPriceDisplay,
+  MASKED_PRICE_TEXT,
   hasPermission,
   savePermissions,
   resetPermissions,
   DEFAULT_ROLE_PERMISSIONS,
 } from '../utils/permissions';
 import { filterWarehouseProperties, warehouseMyProps } from '../utils/warehouseFilter';
+import {
+  findActiveDuplicateListings,
+  buildDuplicateListingWarningMessage,
+  isActiveListingStatus,
+  listingRequestHeaders,
+  DUPLICATE_FORCE_HEADER,
+  buildListingCopyFromProperty,
+} from '../utils/listingWorkflow';
 
 let lsStore;
 function mockLocalStorage() {
@@ -137,7 +148,7 @@ describe('TC-043–TC-062 filterWarehouseProperties (Sales Q1 / GĐ Q1 / Sales Q
   const ctx = (over) => ({
     ROLE: 'sales',
     POS_NAME: 'POS Q1',
-    USER_ID: 'u004',
+    USER_ID: 4,
     showRemoved: false,
     search: '',
     filterLv1: '',
@@ -147,7 +158,7 @@ describe('TC-043–TC-062 filterWarehouseProperties (Sales Q1 / GĐ Q1 / Sales Q
   });
 
   it('TC-043 Sales Q1 ALL: thấy Q1 + Q5 đã duyệt + pending Q1', () => {
-    const r = filterWarehouseProperties(baseProps, ctx({ USER_ID: 'u001' }));
+    const r = filterWarehouseProperties(baseProps, ctx({ USER_ID: 1 }));
     expect(r.map((x) => x.id).sort()).toEqual(['LS-00001', 'LS-00002', 'LS-P1', 'LS-X'].sort());
   });
   it('TC-044 Sales Q1 ALL: ẩn đã gỡ nguồn mặc định', () => {
@@ -158,9 +169,22 @@ describe('TC-043–TC-062 filterWarehouseProperties (Sales Q1 / GĐ Q1 / Sales Q
     const r = filterWarehouseProperties(baseProps, ctx({ showRemoved: true }));
     expect(r.some((x) => x.id === 'LS-R')).toBe(true);
   });
+  it('TC-045b filterLv1 Đã gỡ nguồn: vẫn thấy LS-R khi showRemoved=false (Admin)', () => {
+    const r = filterWarehouseProperties(baseProps, {
+      ROLE: 'admin',
+      POS_NAME: null,
+      USER_ID: '',
+      showRemoved: false,
+      search: '',
+      filterLv1: 'Đã gỡ nguồn',
+      filterType: '',
+      filterPOS: '',
+    });
+    expect(r.map((x) => x.id)).toEqual(['LS-R']);
+  });
   it('TC-046 filterPOS=MINE chỉ tài sản createdBy_id', () => {
-    const mine = { ...propQ1, id: 'LS-M', createdBy_id: 'u999' };
-    const r = filterWarehouseProperties([...baseProps, mine], ctx({ filterPOS: 'MINE', USER_ID: 'u999' }));
+    const mine = { ...propQ1, id: 'LS-M', createdBy_id: 999 };
+    const r = filterWarehouseProperties([...baseProps, mine], ctx({ filterPOS: 'MINE', USER_ID: 999 }));
     expect(r.map((x) => x.id)).toEqual(['LS-M']);
   });
   it('TC-047 filterPOS=POS Q1', () => {
@@ -184,7 +208,7 @@ describe('TC-043–TC-062 filterWarehouseProperties (Sales Q1 / GĐ Q1 / Sales Q
     const r = filterWarehouseProperties(baseProps, {
       ROLE: 'pos_manager',
       POS_NAME: 'POS Q1',
-      USER_ID: 'u_pos1',
+      USER_ID: 5,
       showRemoved: false,
       search: '',
       filterLv1: '',
@@ -197,7 +221,7 @@ describe('TC-043–TC-062 filterWarehouseProperties (Sales Q1 / GĐ Q1 / Sales Q
     const r = filterWarehouseProperties(baseProps, {
       ROLE: 'pos_manager',
       POS_NAME: 'POS Q.5',
-      USER_ID: 'u_pos2',
+      USER_ID: 6,
       showRemoved: false,
       search: '',
       filterLv1: '',
@@ -237,7 +261,7 @@ describe('TC-043–TC-062 filterWarehouseProperties (Sales Q1 / GĐ Q1 / Sales Q
     const r = filterWarehouseProperties([...baseProps, q5wait], {
       ROLE: 'pos_manager',
       POS_NAME: 'POS Q1',
-      USER_ID: 'u_pos1',
+      USER_ID: 5,
       showRemoved: false,
       search: '',
       filterLv1: '',
@@ -250,7 +274,7 @@ describe('TC-043–TC-062 filterWarehouseProperties (Sales Q1 / GĐ Q1 / Sales Q
     const r = filterWarehouseProperties(baseProps, {
       ROLE: 'pos_manager',
       POS_NAME: 'POS Q1',
-      USER_ID: 'u_pos1',
+      USER_ID: 5,
       filterPOS: 'ALL',
       showRemoved: false,
       search: '',
@@ -307,9 +331,9 @@ describe('TC-063–TC-070 warehouseMyProps', () => {
     const r = warehouseMyProps(baseProps, 'pos_manager', 'POS Q.5', '');
     expect(r.every((p) => p.pos_name === 'POS Q.5')).toBe(true);
   });
-  it('TC-066 sales u004', () => {
-    const mine = { ...propQ1, createdBy_id: 'u004' };
-    const r = warehouseMyProps([mine, propQ5], 'sales', 'POS Q1', 'u004');
+  it('TC-066 sales user_id 4', () => {
+    const mine = { ...propQ1, createdBy_id: 4 };
+    const r = warehouseMyProps([mine, propQ5], 'sales', 'POS Q1', 4);
     expect(r.length).toBe(1);
   });
   it('TC-067 sales khác user', () => {
@@ -323,9 +347,9 @@ describe('TC-063–TC-070 warehouseMyProps', () => {
     expect(warehouseMyProps(baseProps, 'admin', 'POS Q1', 'x').length).toBe(baseProps.length);
   });
   it('TC-070 sales nhiều bản ghi cùng user', () => {
-    const a = { ...propQ1, id: 'A', createdBy_id: 'u1' };
-    const b = { ...propQ5, id: 'B', createdBy_id: 'u1' };
-    expect(warehouseMyProps([a, b], 'sales', 'POS Q1', 'u1').length).toBe(2);
+    const a = { ...propQ1, id: 'A', createdBy_id: 1 };
+    const b = { ...propQ5, id: 'B', createdBy_id: 1 };
+    expect(warehouseMyProps([a, b], 'sales', 'POS Q1', 1).length).toBe(2);
   });
 });
 
@@ -334,7 +358,7 @@ describe('TC-071–TC-080 tổng hợp luồng cross-POS (địa chỉ vs danh s
     const r = filterWarehouseProperties(baseProps, {
       ROLE: 'pos_manager',
       POS_NAME: 'POS Q.5',
-      USER_ID: 'u_pos2',
+      USER_ID: 6,
       filterPOS: 'ALL',
       showRemoved: false,
       search: '',
@@ -369,5 +393,80 @@ describe('TC-071–TC-080 tổng hợp luồng cross-POS (địa chỉ vs danh s
   });
   it('TC-080 đồng bộ pos_name trim', () => {
     expect(isSamePosAsActor({ pos_id: 1, pos_name: '  POS Q1' }, 1, 'POS Q1  ')).toBe(true);
+  });
+});
+
+describe('Mask giá POS khác (PROPERTY_VIEW_PRICE_OTHER_POS)', () => {
+  it('GĐ POS Q.5 che giá tài sản POS Q1', () => {
+    expect(shouldMaskPrice('pos_manager', propQ1, 3, 'POS Q.5')).toBe(true);
+    expect(formatPropertyPriceDisplay('pos_manager', propQ1, 3, 'POS Q.5')).toBe(MASKED_PRICE_TEXT);
+  });
+  it('GĐ POS Q.5 thấy giá tài sản cùng POS', () => {
+    expect(shouldMaskPrice('pos_manager', propQ5, 3, 'POS Q.5')).toBe(false);
+  });
+  it('Marketing mặc định thấy giá POS khác', () => {
+    expect(shouldMaskPrice('marketing', propQ1, 2, 'POS Q1')).toBe(false);
+  });
+  it('Admin không che giá', () => {
+    expect(shouldMaskPrice('admin', propQ1, 3, 'POS Q.5')).toBe(false);
+  });
+});
+
+describe('Cảnh báo trùng tin đăng (listingWorkflow)', () => {
+  const listings = [
+    { id: 'LT-00001', property_id: 'LS-00010', listing_status: 'Đã duyệt', createdBy: 'A', createdAt: '2026-01-01T10:00:00Z', expiredAt: '2026-02-01T10:00:00Z' },
+    { id: 'LT-00002', property_id: 'LS-00010', listing_status: 'Từ chối', createdBy: 'B', createdAt: '2026-01-02T10:00:00Z' },
+    { id: 'LT-00003', property_id: 'LS-00011', listing_status: 'Chờ duyệt', createdBy: 'C', createdAt: '2026-01-03T10:00:00Z' },
+  ];
+
+  it('bỏ qua tin Từ chối / Đã gỡ / Hết hạn', () => {
+    expect(isActiveListingStatus('Từ chối')).toBe(false);
+    expect(isActiveListingStatus('Hết hạn')).toBe(false);
+    expect(isActiveListingStatus('Chờ duyệt')).toBe(true);
+  });
+
+  it('Hết hạn không tính là tin hoạt động (trùng tin)', () => {
+    const onlyExpired = [
+      { id: 'LT-00004', property_id: 'LS-00010', listing_status: 'Hết hạn', createdBy: 'A', createdAt: '2026-01-01T10:00:00Z' },
+    ];
+    expect(findActiveDuplicateListings(onlyExpired, 'LS-00010', null)).toHaveLength(0);
+  });
+
+  it('tìm tin trùng LS-00010', () => {
+    const dups = findActiveDuplicateListings(listings, 'LS-00010', 'LT-00099');
+    expect(dups).toHaveLength(1);
+    expect(dups[0].id).toBe('LT-00001');
+  });
+
+  it('message có LT-xxxxx và thời gian', () => {
+    const msg = buildDuplicateListingWarningMessage({
+      propertyCode: 'LS-00010',
+      duplicates: listings.filter((l) => l.id === 'LT-00001'),
+      actionPrompt: 'Tiếp tục?',
+    });
+    expect(msg).toContain('LT-00001');
+    expect(msg).toContain('Người tạo tin');
+    expect(msg).toContain('Thời gian đăng');
+    expect(msg).toContain('Thời gian hết hạn');
+    expect(msg).toContain('Tiếp tục?');
+  });
+
+  it('header X-Force-Duplicate khi đã xác nhận', () => {
+    const h = listingRequestHeaders(true);
+    expect(h[DUPLICATE_FORCE_HEADER]).toBe('true');
+    expect(listingRequestHeaders(false)[DUPLICATE_FORCE_HEADER]).toBeUndefined();
+  });
+});
+
+describe('Auto-fill tin đăng — mask giá (F4)', () => {
+  it('GĐ POS Q.5: tiêu đề gợi ý không lộ giá Q1', () => {
+    const copy = buildListingCopyFromProperty(propQ1, {
+      role: 'pos_manager',
+      posId: 3,
+      posName: 'POS Q.5',
+    });
+    expect(copy.title).toContain('***');
+    expect(copy.description).toContain('***');
+    expect(copy.title).not.toMatch(/5[,.]?\d*\s*(tỷ|VNĐ)/i);
   });
 });

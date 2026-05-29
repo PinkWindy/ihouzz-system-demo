@@ -1,0 +1,312 @@
+<mxfile host="app.diagrams.net" agent="PinkWindy">
+  <diagram id="ihouzz-erd-logical-v2" name="iHouzz Logical ERD v2">
+    <mxGraphModel dx="1885" dy="935" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2600" pageHeight="1800" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="t1" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=22;fontStyle=1;fontColor=#0F172A;align=left;verticalAlign=middle;" value="iHouzz — Logical ERD v2 (đã chỉnh cho draw.io)" vertex="1">
+          <mxGeometry height="36" width="600" x="40" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="t2" parent="1" style="text;html=1;strokeColor=none;fillColor=none;fontSize=12;fontColor=#64748B;align=left;verticalAlign=middle;" value="Chỉnh từ bản ChatGPT: +ROOT_PROPERTY, bỏ self-loop PROPERTIES; ghi chú LISTINGS vs LISTING_CONTENT; bỏ FK ảo EXPORT→AUDIT (thay note)." vertex="1">
+          <mxGeometry height="28" width="900" x="40" y="52" as="geometry" />
+        </mxCell>
+        <mxCell id="z1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#CBD5E1;dashed=1;dashPattern=8 4;fontStyle=1;align=left;verticalAlign=top;spacing=10;fontColor=#334155;" value="&lt;b&gt;1. IAM / POS / Permission&lt;/b&gt;" vertex="1">
+          <mxGeometry height="420" width="720" x="40" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="z2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#CBD5E1;dashed=1;dashPattern=8 4;fontStyle=1;align=left;verticalAlign=top;spacing=10;fontColor=#334155;" value="&lt;b&gt;2. Kho tài sản&lt;/b&gt;" vertex="1">
+          <mxGeometry height="520" width="820" x="800" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="z3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#CBD5E1;dashed=1;dashPattern=8 4;fontStyle=1;align=left;verticalAlign=top;spacing=10;fontColor=#334155;" value="&lt;b&gt;3. Listing &amp; Media&lt;/b&gt;" vertex="1">
+          <mxGeometry height="520" width="860" x="1660" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="z4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#CBD5E1;dashed=1;dashPattern=8 4;fontStyle=1;align=left;verticalAlign=top;spacing=10;fontColor=#334155;" value="&lt;b&gt;4. Workflow / Audit / Notification / Export&lt;/b&gt;" vertex="1">
+          <mxGeometry height="720" width="2480" x="40" y="660" as="geometry" />
+        </mxCell>
+        <mxCell id="ROLES" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#E0F2FE;strokeColor=#0284C7;strokeWidth=2;fontSize=11;" value="&lt;b&gt;ROLES&lt;/b&gt;&lt;hr/&gt;role_id PK&lt;br/&gt;role_code, role_name&lt;br/&gt;description, status&lt;br/&gt;created_at" vertex="1">
+          <mxGeometry height="120" width="200" x="70" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="PERMS" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#E0F2FE;strokeColor=#0284C7;strokeWidth=2;fontSize=11;" value="&lt;b&gt;PERMISSIONS&lt;/b&gt;&lt;hr/&gt;permission_id PK&lt;br/&gt;permission_key UNIQUE&lt;br/&gt;module_code, action_code, scope_code&lt;br/&gt;description, is_active" vertex="1">
+          <mxGeometry height="130" width="220" x="300" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="RPERM" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#F1F5F9;strokeColor=#64748B;strokeWidth=2;fontSize=11;" value="&lt;b&gt;ROLE_PERMISSIONS&lt;/b&gt;&lt;hr/&gt;role_id FK, permission_id FK&lt;br/&gt;effect ALLOW/DENY&lt;br/&gt;created_by, created_at" vertex="1">
+          <mxGeometry height="100" width="190" x="550" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="USERS" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#E0F2FE;strokeColor=#0284C7;strokeWidth=2;fontSize=11;" value="&lt;b&gt;USERS&lt;/b&gt;&lt;hr/&gt;user_id PK&lt;br/&gt;role_id FK, pos_id FK&lt;br/&gt;full_name, email UNIQUE&lt;br/&gt;phone, status, tokens…" vertex="1">
+          <mxGeometry height="130" width="240" x="180" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="POS" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#E0F2FE;strokeColor=#0284C7;strokeWidth=2;fontSize=11;" value="&lt;b&gt;POS_MASTER&lt;/b&gt;&lt;hr/&gt;pos_id PK&lt;br/&gt;pos_code UNIQUE&lt;br/&gt;pos_name, address&lt;br/&gt;manager_id FK → USERS&lt;br/&gt;status, created_at" vertex="1">
+          <mxGeometry height="130" width="260" x="460" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="ADDR" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#DCFCE7;strokeColor=#16A34A;strokeWidth=2;fontSize=11;" value="&lt;b&gt;ADDRESS_MASTER&lt;/b&gt;&lt;hr/&gt;address_id PK&lt;br/&gt;full_address, province, district, ward&lt;br/&gt;street, house_number, normalized_key&lt;br/&gt;geo_lat, geo_lng, created_at" vertex="1">
+          <mxGeometry height="140" width="280" x="830" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="ROOT" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#BBF7D0;strokeColor=#15803D;strokeWidth=2;fontSize=11;" value="&lt;b&gt;ROOT_PROPERTY&lt;/b&gt; &lt;i&gt;(mới — tách khỏi self-loop)&lt;/i&gt;&lt;hr/&gt;root_property_id PK&lt;br/&gt;address_id FK → ADDRESS_MASTER&lt;br/&gt;created_by FK → USERS&lt;br/&gt;created_at, note" vertex="1">
+          <mxGeometry height="120" width="260" x="1140" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="LST" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#FCE7F3;strokeColor=#DB2777;strokeWidth=2;fontSize=11;" value="&lt;b&gt;LISTINGS&lt;/b&gt;&lt;hr/&gt;listing_id PK&lt;br/&gt;property_id FK&lt;br/&gt;created_by FK, status&lt;br/&gt;title, description &lt;i&gt;(bản đang hiển thị)&lt;/i&gt;&lt;br/&gt;submitted/resubmitted, approved/rejected&lt;br/&gt;expired_at, unlist_*, created_at…" vertex="1">
+          <mxGeometry height="180" width="320" x="1700" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="LCNT" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#FCE7F3;strokeColor=#DB2777;strokeWidth=2;fontSize=11;" value="&lt;b&gt;LISTING_CONTENT&lt;/b&gt;&lt;hr/&gt;listing_content_id PK&lt;br/&gt;listing_id FK&lt;br/&gt;content_version, title_snapshot&lt;br/&gt;description_snapshot, modified_by FK&lt;br/&gt;modified_fields JSON, modified_at" vertex="1">
+          <mxGeometry height="150" width="300" x="2060" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="MEDIA" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#FCE7F3;strokeColor=#DB2777;strokeWidth=2;fontSize=11;" value="&lt;b&gt;MEDIA&lt;/b&gt;&lt;hr/&gt;media_id PK&lt;br/&gt;owner_type Property/Listing/Contract&lt;br/&gt;property_id FK NULL, listing_id FK NULL&lt;br/&gt;file_url, file_type, uploaded_by FK…" vertex="1">
+          <mxGeometry height="120" width="300" x="2010" y="460" as="geometry" />
+        </mxCell>
+        <mxCell id="nLC" parent="1" style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF7ED;strokeColor=#FDBA74;fontSize=10;align=left;" value="&lt;b&gt;Quy ước&lt;/b&gt;: LISTINGS giữ &lt;i&gt;current&lt;/i&gt; title/description phục vụ query nhanh; LISTING_CONTENT lưu &lt;i&gt;lịch sử / chỉnh sửa MKT&lt;/i&gt;. Đồng bộ khi publish version." vertex="1">
+          <mxGeometry height="90" width="340" x="1700" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="APR" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#FEF3C7;strokeColor=#D97706;strokeWidth=2;fontSize=11;" value="&lt;b&gt;APPROVALS&lt;/b&gt;&lt;hr/&gt;approval_id PK&lt;br/&gt;entity_type, entity_id&lt;br/&gt;approval_type, status&lt;br/&gt;requested_by, approved_by, rejected_by…" vertex="1">
+          <mxGeometry height="120" width="260" x="70" y="920" as="geometry" />
+        </mxCell>
+        <mxCell id="PUR" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#FEF3C7;strokeColor=#D97706;strokeWidth=2;fontSize=11;" value="&lt;b&gt;PROPERTY_UPDATE_REQUESTS&lt;/b&gt;&lt;hr/&gt;update_request_id PK&lt;br/&gt;property_id FK, requested_by FK&lt;br/&gt;pending_update_payload JSON&lt;br/&gt;status, approved/rejected…" vertex="1">
+          <mxGeometry height="120" width="280" x="360" y="1000" as="geometry" />
+        </mxCell>
+        <mxCell id="STH" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=2;fontSize=11;" value="&lt;b&gt;STATUS_HISTORY&lt;/b&gt;&lt;hr/&gt;history_id PK&lt;br/&gt;entity_type, entity_id&lt;br/&gt;property_id / listing_id optional FK&lt;br/&gt;action, old/new status fields&lt;br/&gt;actor_id FK, reason, created_at" vertex="1">
+          <mxGeometry height="130" width="300" x="670" y="810" as="geometry" />
+        </mxCell>
+        <mxCell id="AUD" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=2;fontSize=11;" value="&lt;b&gt;AUDIT_LOGS&lt;/b&gt;&lt;hr/&gt;log_id PK, timestamp&lt;br/&gt;actor_id FK, entity_type, entity_id&lt;br/&gt;action, old_value, new_value JSON&lt;br/&gt;ip_address, note, session_id" vertex="1">
+          <mxGeometry height="120" width="280" x="1030" y="910" as="geometry" />
+        </mxCell>
+        <mxCell id="NOT" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#EDE9FE;strokeColor=#7C3AED;strokeWidth=2;fontSize=11;" value="&lt;b&gt;NOTIFICATIONS&lt;/b&gt;&lt;hr/&gt;notification_id PK&lt;br/&gt;recipient_id, sender_id FK&lt;br/&gt;channel, title, message&lt;br/&gt;entity_type, entity_id, status, read_at…" vertex="1">
+          <mxGeometry height="120" width="260" x="1340" y="880" as="geometry" />
+        </mxCell>
+        <mxCell id="EXP" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#FEF3C7;strokeColor=#D97706;strokeWidth=2;fontSize=11;" value="&lt;b&gt;EXPORT_JOBS&lt;/b&gt;&lt;hr/&gt;export_id PK&lt;br/&gt;requested_by FK&lt;br/&gt;export_type, filter_conditions JSON&lt;br/&gt;record_count, file_url, status…" vertex="1">
+          <mxGeometry height="110" width="240" x="1970" y="770" as="geometry" />
+        </mxCell>
+        <mxCell id="nEX" parent="1" style="shape=note;whiteSpace=wrap;html=1;size=14;fillColor=#FFF7ED;strokeColor=#FDBA74;fontSize=10;align=left;" value="&lt;b&gt;Export → Audit&lt;/b&gt;: không vẽ FK. Khi job &lt;i&gt;Done&lt;/i&gt;, service &lt;b&gt;INSERT&lt;/b&gt; AUDIT_LOGS (action EXPORT_*). Quan hệ nghiệp vụ, không phải khóa DB." vertex="1">
+          <mxGeometry height="88" width="280" x="1950" y="906" as="geometry" />
+        </mxCell>
+        <mxCell id="LEG" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#818CF8;fontSize=11;align=left;verticalAlign=top;spacing=8;" value="&lt;b&gt;Legend&lt;/b&gt;&lt;br/&gt;Nét liền: FK thường&lt;br/&gt;Nét đứt: tham chiếu đa hình / logic&lt;br/&gt;ERone / ERmany trên cạnh" vertex="1">
+          <mxGeometry height="100" width="220" x="70" y="1130" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="ROLES" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=0.5;exitY=1;entryX=0.25;entryY=0;" target="USERS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="ROLES" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;" target="RPERM">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="PERMS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;" target="RPERM">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="POS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" target="USERS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="USERS" style="endArrow=ERone;startArrow=ERzeroToOne;html=1;strokeWidth=2;strokeColor=#0284C7;exitX=1;exitY=0.35;entryX=0;entryY=0.35;" target="POS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="ADDR" style="endArrow=ERone;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#16A34A;" target="ROOT">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="ROOT" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#16A34A;" target="PROP">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="POS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=1;exitY=0.75;entryX=0;entryY=0.3;" target="PROP">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="780" y="435" />
+              <mxPoint x="780" y="360" />
+              <mxPoint x="1000" y="360" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="USERS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=1;exitY=0;entryX=0;entryY=1;" target="ROOT">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="500" y="320" />
+              <mxPoint x="500" y="120" />
+              <mxPoint x="1140" y="120" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="USERS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=1;exitY=1;entryX=0;entryY=0.15;" target="PROP">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="620" y="450" />
+              <mxPoint x="620" y="380" />
+              <mxPoint x="1000" y="380" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="PROP" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="LST">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" edge="1" parent="1" source="PROP" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=1;exitY=0.5;entryX=0;entryY=0.8;" target="LST">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1650" y="385" />
+              <mxPoint x="1650" y="284" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="LST" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;" target="LCNT">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="PROP" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=1;exitY=0.85;entryX=0;entryY=0.3;" target="MEDIA">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="LST" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="MEDIA">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" edge="1" parent="1" source="USERS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=1;exitY=0.8;entryX=0;entryY=0.7;" target="MEDIA">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="650" y="424" />
+              <mxPoint x="650" y="500" />
+              <mxPoint x="1880" y="500" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e17" edge="1" parent="1" source="PROP" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=0;exitY=1;entryX=0.5;entryY=0;" target="PUR">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="920" y="520" />
+              <mxPoint x="500" y="520" />
+              <mxPoint x="500" y="720" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e18" edge="1" parent="1" source="USERS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=0;exitY=1;entryX=0;entryY=0;" target="PUR">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="180" y="450" />
+              <mxPoint x="180" y="680" />
+              <mxPoint x="360" y="680" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e19" edge="1" parent="1" source="USERS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=0;exitY=0.5;entryX=0.5;entryY=0;" target="APR">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="120" y="385" />
+              <mxPoint x="120" y="680" />
+              <mxPoint x="200" y="680" />
+              <mxPoint x="200" y="800" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e20" edge="1" parent="1" source="PROP" style="endArrow=ERmany;startArrow=ERzeroToOne;html=1;dashed=1;strokeWidth=2;strokeColor=#D97706;exitX=0;exitY=0.4;entryX=1;entryY=0.3;" target="APR">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="880" y="380" />
+              <mxPoint x="880" y="756" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e21" edge="1" parent="1" source="LST" style="endArrow=ERmany;startArrow=ERzeroToOne;html=1;dashed=1;strokeWidth=2;strokeColor=#D97706;exitX=0;exitY=0.5;entryX=1;entryY=0.6;" target="APR">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1600" y="230" />
+              <mxPoint x="1600" y="792" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e22" edge="1" parent="1" source="PROP" style="endArrow=ERmany;startArrow=ERzeroToOne;html=1;dashed=1;strokeWidth=2;strokeColor=#7C3AED;exitX=0.25;exitY=1;entryX=0.5;entryY=0;" target="STH">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1090" y="500" />
+              <mxPoint x="830" y="500" />
+              <mxPoint x="830" y="720" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e23" edge="1" parent="1" source="LST" style="endArrow=ERmany;startArrow=ERzeroToOne;html=1;dashed=1;strokeWidth=2;strokeColor=#7C3AED;exitX=0;exitY=0.75;entryX=1;entryY=0.4;" target="STH">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1580" y="275" />
+              <mxPoint x="1580" y="800" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e24" edge="1" parent="1" source="USERS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=0.25;exitY=1;entryX=0;entryY=0.5;" target="STH">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="240" y="450" />
+              <mxPoint x="240" y="785" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e25" edge="1" parent="1" source="USERS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=0.5;exitY=1;entryX=0;entryY=0.4;" target="AUD">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="300" y="450" />
+              <mxPoint x="300" y="768" />
+              <mxPoint x="1020" y="768" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e26" edge="1" parent="1" source="USERS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=0.75;exitY=1;entryX=0;entryY=0.5;" target="NOT">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="360" y="450" />
+              <mxPoint x="360" y="780" />
+              <mxPoint x="1330" y="780" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e27" edge="1" parent="1" source="USERS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=1;exitY=1;entryX=0;entryY=0.5;" target="EXP">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="420" y="450" />
+              <mxPoint x="420" y="775" />
+              <mxPoint x="1620" y="775" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e28" edge="1" parent="1" source="EXP" style="endArrow=none;dashed=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="nEX">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e29" edge="1" parent="1" source="PROP" style="endArrow=ERmany;startArrow=ERzeroToOne;html=1;dashed=1;strokeWidth=2;strokeColor=#7C3AED;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="AUD">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1180" y="500" />
+              <mxPoint x="1180" y="680" />
+              <mxPoint x="1160" y="680" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e30" edge="1" parent="1" source="LST" style="endArrow=ERmany;startArrow=ERzeroToOne;html=1;dashed=1;strokeWidth=2;strokeColor=#7C3AED;exitX=0.5;exitY=1;entryX=1;entryY=0.2;" target="AUD">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1860" y="320" />
+              <mxPoint x="1860" y="680" />
+              <mxPoint x="1300" y="680" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e31" edge="1" parent="1" source="PROP" style="endArrow=ERmany;startArrow=ERzeroToOne;html=1;dashed=1;strokeWidth=2;strokeColor=#7C3AED;exitX=0.75;exitY=1;entryX=0;entryY=0.2;" target="NOT">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1270" y="500" />
+              <mxPoint x="1270" y="660" />
+              <mxPoint x="1330" y="660" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e32" edge="1" parent="1" source="LST" style="endArrow=ERmany;startArrow=ERzeroToOne;html=1;dashed=1;strokeWidth=2;strokeColor=#7C3AED;exitX=0;exitY=1;entryX=1;entryY=0.5;" target="NOT">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1700" y="320" />
+              <mxPoint x="1660" y="320" />
+              <mxPoint x="1660" y="780" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e33" edge="1" parent="1" source="LST" style="endArrow=none;dashed=1;html=1;exitX=0.25;exitY=1;entryX=0.5;entryY=0;" target="nLC">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tECGN6_FmCTOXrRLx3ZW-1" edge="1" parent="1" source="USERS" style="endArrow=ERmany;startArrow=ERone;html=1;strokeWidth=2;strokeColor=#475569;exitX=1;exitY=0.5;entryX=0;entryY=0.8;" target="PROP" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points" />
+            <mxPoint x="420" y="385" as="sourcePoint" />
+            <mxPoint x="1700" y="184" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="PROP" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacing=8;fillColor=#DCFCE7;strokeColor=#16A34A;strokeWidth=2;fontSize=11;" value="&lt;b&gt;PROPERTIES&lt;/b&gt;&lt;hr/&gt;property_id PK (LS-xxxxx)&lt;br/&gt;root_property_id FK → ROOT_PROPERTY&lt;br/&gt;address_id FK (denormalized / cache nếu cần)&lt;br/&gt;pos_id FK, created_by FK&lt;br/&gt;listing_type, warehouse_type, level1/2&lt;br/&gt;area, price, legal, bedroom/toilet…&lt;br/&gt;approved/rejected/remove_* fields&lt;br/&gt;created_at, updated_at" vertex="1">
+          <mxGeometry height="200" width="360" x="1000" y="270" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

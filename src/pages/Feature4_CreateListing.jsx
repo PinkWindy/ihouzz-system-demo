@@ -1,16 +1,24 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { sameUserId } from '../utils/userId';
 import {
   API,
   readSessionUser,
   posScopedProperty,
   postAuditLog,
   buildLogAction,
+  AUDIT_ACTION_TYPE,
   RESUBMIT_NOTE_MIN,
   formatListingId,
   listingSequenceNumber,
   buildListingTitleFromProperty,
   buildListingDescriptionFromProperty,
+  buildListingCopyFromProperty,
   mergePreviewImageUrls,
+  formatPropertyId,
+  confirmDuplicateListingWarningAsync,
+  listingRequestHeaders,
+  resolveDuplicateListing409,
+  SESSION_CHANGED_EVENT,
 } from '../utils/listingWorkflow';
 import {
   MAX_IMAGE_BYTES,
@@ -23,6 +31,7 @@ import {
   splitUrls,
 } from '../utils/mediaLibraryApi';
 import ListingWebsitePreviewModal from '../components/ListingWebsitePreviewModal';
+import { formatPropertyPriceDisplay } from '../utils/permissions';
 
 const LV1_COLOR = {
   'Được duyệt': 'success',
@@ -39,6 +48,21 @@ const LV2_COLOR = {
   'Chờ chỉnh sửa': 'warning',
   'Chờ duyệt chỉnh sửa': 'info',
 };
+
+/** json-server / proxy có thể trả `{ data: [...] }` thay vì mảng thuần. */
+function normalizeJsonList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+/** Tương phản badge — đồng bộ F9/F4 (`warning` / `light`). */
+function statusBadgeClass(bgKey) {
+  const k = bgKey || 'secondary';
+  if (k === 'light') return 'badge bg-light text-dark border';
+  if (k === 'warning') return 'badge bg-warning text-dark';
+  return `badge bg-${k}`;
+}
 
 /** Một dòng ảnh/video trong form (clientKey bất biến trong phiên; mediaLibId khi đã lưu DB) */
 function newClientKey() {
@@ -403,7 +427,7 @@ export default function Feature4_CreateListing() {
   const [mediaLibraryAll, setMediaLibraryAll] = useState([]);
   const [workspaceTab, setWorkspaceTab] = useState('compose'); // compose | mine | library
   const [filterType, setFilterType] = useState('all');
-  const [filterCreator, setFilterCreator] = useState('all');
+  const [filterCreator, setFilterCreator] = useState(() => readSessionUser().name || 'all');
   const [filterTab, setFilterTab] = useState('eligible');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
@@ -421,23 +445,27 @@ export default function Feature4_CreateListing() {
   const [createdListingId, setCreatedListingId] = useState('');
 
   useEffect(() => {
-    const onStorage = () => setUser(readSessionUser());
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    const bump = () => setUser(readSessionUser());
+    window.addEventListener('storage', bump);
+    window.addEventListener(SESSION_CHANGED_EVENT, bump);
+    return () => {
+      window.removeEventListener('storage', bump);
+      window.removeEventListener(SESSION_CHANGED_EVENT, bump);
+    };
   }, []);
 
   const loadData = useCallback(async () => {
-    const [p, l] = await Promise.all([
+    const [pRaw, lRaw] = await Promise.all([
       fetch(`${API}/properties`).then((r) => r.json()),
       fetch(`${API}/listings`).then((r) => r.json()),
     ]);
-    setProperties(p);
-    setListings(l);
+    setProperties(normalizeJsonList(pRaw));
+    setListings(normalizeJsonList(lRaw));
   }, []);
 
   const loadMediaLibrary = useCallback(async () => {
     const rows = await fetch(`${API}/mediaLibrary`).then((r) => r.json());
-    setMediaLibraryAll(Array.isArray(rows) ? rows : []);
+    setMediaLibraryAll(normalizeJsonList(rows));
   }, []);
 
   useEffect(() => {
@@ -497,7 +525,7 @@ export default function Feature4_CreateListing() {
   const myListings = useMemo(() => {
     return listings.filter((l) => {
       if (user.role === 'admin') return true;
-      if (l.createdBy_id && user.id) return l.createdBy_id === user.id;
+      if (l.createdBy_id && user.id) return sameUserId(l.createdBy_id, user.id);
       return l.createdBy === user.name;
     });
   }, [listings, user]);
@@ -518,10 +546,24 @@ export default function Feature4_CreateListing() {
     [localMedia],
   );
 
+  const listingActor = useMemo(() => {
+    const rawPid = user.pos_id;
+    const posIdNum = rawPid === '' || rawPid == null ? null : Number(rawPid);
+    return {
+      role: user.role,
+      posId: Number.isNaN(posIdNum) ? null : posIdNum,
+      posName: user.pos_name || '',
+    };
+  }, [user.role, user.pos_id, user.pos_name]);
+
+  const displayPrice = (p) =>
+    p ? formatPropertyPriceDisplay(listingActor.role, p, listingActor.posId, listingActor.posName) : '—';
+
   const autoFill = (prop) => {
+    const copy = buildListingCopyFromProperty(prop, listingActor);
     setForm({
-      title: buildListingTitleFromProperty(prop),
-      description: buildListingDescriptionFromProperty(prop),
+      title: copy.title,
+      description: copy.description,
       contact_phone: '',
     });
     setLocalMedia([]);
@@ -533,13 +575,15 @@ export default function Feature4_CreateListing() {
   };
 
   const nextLTId = async () => {
-    const list = await fetch(`${API}/listings`).then((r) => r.json());
-    let max = 0;
+    const raw = await fetch(`${API}/listings`).then((r) => r.json());
+    const list = normalizeJsonList(raw);
+    let maxId = 0;
     for (const l of list) {
-      const n = listingSequenceNumber(l.id);
-      if (n != null) max = Math.max(max, n);
+      const idToCheck = l.listingCode || l.id;
+      const n = listingSequenceNumber(idToCheck);
+      if (n != null) maxId = Math.max(maxId, n);
     }
-    return formatListingId(String(max + 1));
+    return formatListingId(String(maxId + 1));
   };
 
   const syncListingMediaFields = async (listingId, propertyId, u, mediaRows) => {
@@ -577,17 +621,32 @@ export default function Feature4_CreateListing() {
       showToast('Vui lòng điền đầy đủ tiêu đề, mô tả và SĐT liên hệ.', 'danger');
       return;
     }
+    
     const u = readSessionUser();
+    const dupConfirm = await confirmDuplicateListingWarningAsync({
+      listings,
+      propertyRef: selected.id,
+      propertyCode: selected.propertyCode || selected.id,
+      actionPrompt:
+        'Bạn có chắc chắn muốn GỬI DUYỆT thêm tin đăng cho tài sản này không? (Chọn OK để tiếp tục.)',
+      audit: {
+        userName: u.name || u.email || 'Sales',
+        userId: u.id || '',
+        propertyId: selected.id,
+        screen: 'F4',
+        action: 'LISTING_SUBMIT',
+      },
+    });
+    if (!dupConfirm.ok) return;
+
     setSubmitting(true);
     try {
       const rawId = await nextLTId();
       const newLTId = formatListingId(rawId);
       const now = new Date().toISOString();
-      await fetch(`${API}/listings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const postBody = JSON.stringify({
           id: newLTId,
+          listingCode: newLTId,
           property_id: selected.id,
           title: form.title.trim(),
           description: form.description.trim(),
@@ -601,13 +660,63 @@ export default function Feature4_CreateListing() {
           createdAt: now,
           updatedAt: now,
           expiredAt: null,
+        });
+      const doPost = (force) =>
+        fetch(`${API}/listings`, {
+          method: 'POST',
+          headers: listingRequestHeaders(force),
+          body: postBody,
+        });
+      let res = await doPost(dupConfirm.forceDuplicate);
+      if (res.status === 409) {
+        const retried = await resolveDuplicateListing409(
+          res,
+          (force) => doPost(force),
+          {
+            listings,
+            propertyRef: selected.id,
+            propertyCode: selected.propertyCode || selected.id,
+            actionPrompt:
+              'Bạn có chắc chắn muốn GỬI DUYỆT thêm tin đăng cho tài sản này không? (Chọn OK để tiếp tục.)',
+            audit: {
+              userName: u.name || u.email || 'Sales',
+              userId: u.id || '',
+              propertyId: selected.id,
+              listingId: newLTId,
+              screen: 'F4',
+              action: 'LISTING_SUBMIT',
+            },
+          },
+        );
+        if (retried === null) {
+          setSubmitting(false);
+          return;
+        }
+        res = retried;
+      }
+      if (!res.ok) throw new Error(`POST listings ${res.status}`);
+      if (localMedia.length) {
+        const safeMedia = localMedia.map((m, i) => {
+          if (m.url && m.url.startsWith('data:')) {
+            return { ...m, url: `https://picsum.photos/seed/ihz-listing-${Date.now()}-${i}/1200/800` };
+          }
+          return m;
+        });
+        await syncListingMediaFields(newLTId, selected.id, u, safeMedia);
+      }
+      const patchRes = await fetch(`${API}/properties/${encodeURIComponent(selected.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          level2_status: 'Chờ MKT duyệt',
+          statusLv2: 'Chờ MKT duyệt',
+          updatedAt: now,
         }),
       });
-      if (localMedia.length) {
-        await syncListingMediaFields(newLTId, selected.id, u, localMedia);
-      }
+      if (!patchRes.ok) throw new Error(`PATCH property ${patchRes.status}`);
       await postAuditLog({
         actionText: buildLogAction('Tạo & gửi duyệt bài đăng', newLTId, `TS ${selected.id}`),
+        actionType: AUDIT_ACTION_TYPE.LISTING_SUBMIT_FOR_REVIEW,
         listingId: newLTId,
         userName: u.name || u.email || 'User',
         userId: u.id || '',
@@ -630,9 +739,10 @@ export default function Feature4_CreateListing() {
   const openResubmit = async (listing) => {
     const prop = properties.find((p) => p.id === listing.property_id);
     setResubmitTarget({ listing, property: prop });
+    const copy = prop ? buildListingCopyFromProperty(prop, listingActor) : { title: '', description: '' };
     setForm({
-      title: buildListingTitleFromProperty(prop) || listing.title || '',
-      description: buildListingDescriptionFromProperty(prop),
+      title: copy.title || listing.title || '',
+      description: copy.description,
       contact_phone: (listing.contact_phone || '').trim(),
     });
     setResubmitNote('');
@@ -687,14 +797,20 @@ export default function Feature4_CreateListing() {
         listingId: listing.id,
         propertyId: listing.property_id,
         user: u,
-        items: localMedia.map((m) => ({
-          kind: m.kind,
-          url: m.url,
-          fileName: m.fileName,
-          mimeType: m.mimeType,
-          fileSize: m.fileSize,
-          source: m.source || 'upload',
-        })),
+        items: localMedia.map((m, i) => {
+          let safeUrl = m.url;
+          if (safeUrl && safeUrl.startsWith('data:')) {
+            safeUrl = `https://picsum.photos/seed/ihz-listing-resubmit-${Date.now()}-${i}/1200/800`;
+          }
+          return {
+            kind: m.kind,
+            url: safeUrl,
+            fileName: m.fileName,
+            mimeType: m.mimeType,
+            fileSize: m.fileSize,
+            source: m.source || 'upload',
+          };
+        }),
       });
       const imageUrls = saved.filter((s) => s.kind === 'image').map((s) => s.url);
       const videoUrls = saved.filter((s) => s.kind === 'video').map((s) => s.url);
@@ -737,6 +853,7 @@ export default function Feature4_CreateListing() {
       }
       await postAuditLog({
         actionText: buildLogAction('Đầu chủ chỉnh sửa & gửi lại duyệt', listing.id, `Ghi chú: ${resubmitNote.trim().slice(0, 120)}`),
+        actionType: AUDIT_ACTION_TYPE.LISTING_RESUBMIT_FOR_REVIEW,
         listingId: listing.id,
         userName: u.name || u.email || 'User',
         userId: u.id || '',
@@ -744,6 +861,11 @@ export default function Feature4_CreateListing() {
         oldStatus: 'Từ chối',
         newStatus: 'Chờ duyệt chỉnh sửa',
         detail: resubmitNote.trim(),
+        modifiedFields: {
+          title: { from: listing.title || '', to: form.title.trim() },
+          description: { from: listing.description || '', to: form.description.trim() },
+          resubmit_note: resubmitNote.trim(),
+        },
       });
       setResubmitTarget(null);
       setResubmitNote('');
@@ -780,56 +902,62 @@ export default function Feature4_CreateListing() {
   }, [localMedia]);
 
   return (
-    <div className="p-0" style={{ minHeight: '100vh', background: 'linear-gradient(160deg, #0f172a 0%, #1e293b 45%, #334155 100%)' }}>
+    <div className="p-0" style={{ minHeight: '100vh', background: 'var(--ih-main-bg, #f1f5f9)' }}>
       <div className="p-4 mx-auto" style={{ maxWidth: 1280 }}>
         <header className="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
           <div>
-            <div className="text-uppercase small fw-bold mb-1" style={{ letterSpacing: '0.12em', color: '#94a3b8' }}>
-              UC004 · Niêm yết Lv2
+            <div className="text-uppercase small fw-bold mb-1 text-secondary" style={{ letterSpacing: '0.12em' }}>
+              Niêm yết cấp tin
             </div>
-            <h3 className="fw-bold text-white mb-1">Soạn tin đăng</h3>
-            <p className="text-secondary mb-0 small" style={{ maxWidth: 560 }}>
+            <h3 className="fw-bold text-dark mb-1">Soạn tin đăng</h3>
+            <p className="text-muted mb-0 small" style={{ maxWidth: 560 }}>
               Media lưu tại <strong>Library</strong> (json-server). Mã tin chuẩn <strong>LT-00001</strong>. Xem trước có gallery ảnh + video.
             </p>
           </div>
           <div className="d-flex gap-2 flex-wrap">
-            <span className="badge rounded-pill px-3 py-2" style={{ background: '#334155', color: '#e2e8f0' }}>
+            <span className="badge rounded-pill px-3 py-2 bg-light text-dark border">
               {user.name || 'Chưa đăng nhập'}
             </span>
-            <span className="badge rounded-pill px-3 py-2 bg-info bg-opacity-25 text-info border border-info border-opacity-50">
+            <span className="badge rounded-pill px-3 py-2 bg-info bg-opacity-10 text-info border border-info border-opacity-25">
               Chờ MKT: {pendingMktCount}
             </span>
           </div>
         </header>
 
         {toast && (
-          <div className={`alert alert-${toast.type} border-0 shadow mb-3`} role="alert">
+          <div 
+            className={`alert alert-${toast.type} shadow`} 
+            style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999, minWidth: 300 }}
+            role="alert"
+          >
             {toast.msg}
           </div>
         )}
 
-        <div className="btn-group mb-4 shadow-sm flex-wrap">
+        <div className="mb-4 bg-white border rounded-3 shadow-sm p-2 d-inline-flex flex-wrap align-items-center gap-1">
+          <div className="btn-group shadow-sm flex-wrap">
           <button
             type="button"
-            className={`btn px-3 ${workspaceTab === 'compose' ? 'btn-light fw-bold' : 'btn-outline-light'}`}
+            className={`btn px-3 ${workspaceTab === 'compose' ? 'btn-primary' : 'btn-outline-primary'}`}
             onClick={() => setWorkspaceTab('compose')}
           >
             Soạn tin mới
           </button>
           <button
             type="button"
-            className={`btn px-3 ${workspaceTab === 'mine' ? 'btn-light fw-bold' : 'btn-outline-light'}`}
+            className={`btn px-3 ${workspaceTab === 'mine' ? 'btn-primary' : 'btn-outline-primary'}`}
             onClick={() => setWorkspaceTab('mine')}
           >
             Bài đăng của tôi ({myListings.length})
           </button>
           <button
             type="button"
-            className={`btn px-3 ${workspaceTab === 'library' ? 'btn-light fw-bold' : 'btn-outline-light'}`}
+            className={`btn px-3 ${workspaceTab === 'library' ? 'btn-primary' : 'btn-outline-primary'}`}
             onClick={() => setWorkspaceTab('library')}
           >
             Library Media ({scopedMediaLibrary.length})
           </button>
+          </div>
         </div>
 
         {workspaceTab === 'library' && (
@@ -852,7 +980,7 @@ export default function Feature4_CreateListing() {
                         <div className="text-truncate fw-semibold" title={m.fileName}>
                           {m.fileName}
                         </div>
-                        <div className="text-muted text-truncate">Tin: {formatListingId(m.listingId)}</div>
+                        <div className="text-muted text-truncate">Tin: {formatListingId(m.listingCode || m.listingId)}</div>
                         <span className="badge bg-secondary mt-1">{m.kind}</span>
                       </div>
                     </div>
@@ -888,9 +1016,9 @@ export default function Feature4_CreateListing() {
                     {myListings.map((l) => (
                       <tr key={l.id}>
                         <td className="ps-4 fw-mono">
-                          <span className="badge bg-dark">{formatListingId(l.id)}</span>
+                          <span className="badge bg-dark">{formatListingId(l.listingCode || l.id)}</span>
                         </td>
-                        <td className="small">{l.property_id}</td>
+                        <td className="small">{formatPropertyId(properties.find(p => String(p.id) === String(l.property_id))?.propertyCode || l.property_id)}</td>
                         <td className="text-truncate" style={{ maxWidth: 280 }} title={l.title}>
                           {l.title}
                         </td>
@@ -898,7 +1026,7 @@ export default function Feature4_CreateListing() {
                           <span className="badge bg-secondary">{l.listing_status}</span>
                         </td>
                         <td className="text-end pe-4">
-                          {l.listing_status === 'Từ chối' && (user.role === 'admin' || l.createdBy_id === user.id || l.createdBy === user.name) && (
+                          {l.listing_status === 'Từ chối' && (user.role === 'admin' || sameUserId(l.createdBy_id, user.id) || l.createdBy === user.name) && (
                             <button type="button" className="btn btn-sm btn-primary" onClick={() => openResubmit(l)}>
                               Gửi lại sau từ chối
                             </button>
@@ -931,13 +1059,13 @@ export default function Feature4_CreateListing() {
               ].map((s) => (
                 <div key={s.label} className="col-6 col-md-3">
                   <div
-                    className="p-3 border-0 h-100"
-                    style={{ borderRadius: 14, background: 'rgba(15,23,42,0.65)', border: `1px solid ${s.color}44` }}
+                    className="p-3 border-0 h-100 bg-white shadow-sm"
+                    style={{ borderRadius: 14, border: `1px solid ${s.color}40` }}
                   >
                     <div className="fw-bold fs-4" style={{ color: s.color }}>
                       {s.value}
                     </div>
-                    <div className="small" style={{ color: '#94a3b8' }}>
+                    <div className="small text-muted">
                       {s.label}
                     </div>
                   </div>
@@ -989,6 +1117,9 @@ export default function Feature4_CreateListing() {
                   onChange={(e) => setFilterCreator(e.target.value)}
                 >
                   <option value="all">Mọi người tạo TS</option>
+                  {user.name && !creators.includes(user.name) && (
+                    <option value={user.name}>{user.name}</option>
+                  )}
                   {creators.map((c) => (
                     <option key={c} value={c}>
                       {c}
@@ -1040,7 +1171,7 @@ export default function Feature4_CreateListing() {
                             onClick={() => canCreate && autoFill(p)}
                           >
                             <td className="ps-3">
-                              <span className="badge bg-dark">{p.id}</span>
+                              <span className="badge bg-dark">{p.propertyCode || p.id}</span>
                             </td>
                             <td className="small">{p.propertyType}</td>
                             <td className="text-truncate" style={{ maxWidth: 200 }} title={p.address}>
@@ -1049,17 +1180,15 @@ export default function Feature4_CreateListing() {
                             <td>
                               <span className={`badge bg-${p.type === 'Bán' ? 'danger' : 'info'}`}>{p.type}</span>
                             </td>
-                            <td className="small fw-semibold text-primary">
-                              {p.price_display || `${Number(p.price).toLocaleString('en-US')} ${p.priceUnit || 'VNĐ'}`}
-                            </td>
+                            <td className="small fw-semibold text-primary">{displayPrice(p)}</td>
                             <td>
                               <span className="badge bg-light text-dark border">{p.warehouse_type || '—'}</span>
                             </td>
                             <td>
-                              <span className={`badge bg-${LV1_COLOR[s1] || 'secondary'}`}>{s1}</span>
+                              <span className={statusBadgeClass(LV1_COLOR[s1] || 'secondary')}>{s1}</span>
                             </td>
                             <td>
-                              <span className={`badge bg-${LV2_COLOR[s2] || 'secondary'}`}>{s2}</span>
+                              <span className={statusBadgeClass(LV2_COLOR[s2] || 'secondary')}>{s2}</span>
                             </td>
                             <td className="small text-muted">{p.pos_name}</td>
                             <td className="small">{p.createdBy}</td>
@@ -1092,16 +1221,16 @@ export default function Feature4_CreateListing() {
       </div>
 
       {selected && step === 'form' && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 1050 }}>
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1050 }}>
           <div className="modal-dialog modal-xl modal-dialog-scrollable">
             <div className="modal-content border-0" style={{ borderRadius: 16 }}>
               <div className="modal-header border-0 text-white" style={{ background: 'linear-gradient(90deg,#0ea5e9,#6366f1)' }}>
-                <h5 className="modal-title fw-bold">Soạn tin đăng — {selected.id}</h5>
+                <h5 className="modal-title fw-bold">Soạn tin đăng — {formatPropertyId(selected.propertyCode || selected.id)}</h5>
                 <button type="button" className="btn-close btn-close-white" onClick={resetCompose} aria-label="Đóng" />
               </div>
               <div className="modal-body p-0">
                 <div className="bg-light p-3 border-bottom d-flex flex-wrap gap-2 align-items-center">
-                  <span className="badge bg-dark">{selected.id}</span>
+                  <span className="badge bg-dark">{formatPropertyId(selected.propertyCode || selected.id)}</span>
                   <span className={`badge bg-${selected.type === 'Bán' ? 'danger' : 'info'}`}>{selected.type}</span>
                   <span className="small text-truncate" style={{ maxWidth: 400 }}>
                     {selected.address}
@@ -1116,11 +1245,7 @@ export default function Feature4_CreateListing() {
                           {[
                             ['Loại hình', selected.type],
                             ['Loại BĐS', selected.propertyType],
-                            [
-                              'Giá',
-                              selected.price_display ||
-                                `${Number(selected.price).toLocaleString('en-US')} ${selected.priceUnit || 'VNĐ'}`,
-                            ],
+                            ['Giá', displayPrice(selected)],
                             ['Diện tích', `${Number(selected.area).toLocaleString('en-US')}m²`],
                             ['Người tạo TS', selected.createdBy],
                           ].map(([k, v]) => (
@@ -1196,7 +1321,7 @@ export default function Feature4_CreateListing() {
       )}
 
       {selected && step === 'preview' && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 1050 }}>
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1050 }}>
           <div className="modal-dialog modal-xl modal-dialog-scrollable">
             <div className="modal-content border-0" style={{ borderRadius: 16 }}>
               <div className="modal-header bg-info text-white border-0">
@@ -1229,7 +1354,7 @@ export default function Feature4_CreateListing() {
       )}
 
       {step === 'success' && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 1050 }}>
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1050 }}>
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content border-0 text-center p-4" style={{ borderRadius: 16 }}>
               <div className="text-success" style={{ fontSize: 56 }}>
@@ -1253,7 +1378,7 @@ export default function Feature4_CreateListing() {
       )}
 
       {resubmitTarget && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(15,23,42,0.85)', zIndex: 1060 }}>
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1060 }}>
           <div className="modal-dialog modal-xl modal-dialog-scrollable">
             <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 16 }}>
               <div className="modal-header border-0 text-white" style={{ background: 'linear-gradient(90deg,#b45309,#d97706)' }}>
@@ -1262,9 +1387,11 @@ export default function Feature4_CreateListing() {
                   <h5 className="modal-title fw-bold mb-0">{formatListingId(resubmitTarget.listing.id)}</h5>
                   {resubmitTarget.property && (
                     <div className="mt-2 d-flex flex-wrap gap-2 align-items-center small">
-                      <span className="badge bg-light text-dark">Tài sản: {resubmitTarget.property.id}</span>
+                      <span className="badge bg-light text-dark">Tài sản: {formatPropertyId(resubmitTarget.property.propertyCode || resubmitTarget.property.id)}</span>
                       <span
-                        className={`badge bg-${LV2_COLOR[resubmitTarget.property.level2_status || resubmitTarget.property.statusLv2] || 'secondary'} text-white`}
+                        className={statusBadgeClass(
+                          LV2_COLOR[resubmitTarget.property.level2_status || resubmitTarget.property.statusLv2] || 'secondary',
+                        )}
                       >
                         Lv2: {resubmitTarget.property.level2_status || resubmitTarget.property.statusLv2 || '—'}
                       </span>
@@ -1315,10 +1442,11 @@ export default function Feature4_CreateListing() {
                         onClick={() => {
                           const p = resubmitTarget.property;
                           if (!p) return;
+                          const copy = buildListingCopyFromProperty(p, listingActor);
                           setForm((f) => ({
                             ...f,
-                            title: buildListingTitleFromProperty(p) || f.title,
-                            description: buildListingDescriptionFromProperty(p),
+                            title: copy.title || f.title,
+                            description: copy.description,
                           }));
                           showToast('Đã làm mới tiêu đề & mô tả từ tài sản kho.', 'success');
                         }}

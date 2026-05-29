@@ -9,7 +9,7 @@ const baseProp = {
   id: 'LS-00001',
   level1_status: 'Được duyệt',
   level2_status: 'Chưa niêm yết',
-  createdBy_id: 'u004',
+  createdBy_id: 4,
 };
 
 describe('propertyHasLiveListingForUpdateLock (phương án B)', () => {
@@ -43,26 +43,26 @@ describe('canRequestPropertyUpdate + listings', () => {
     expect(
       canRequestPropertyUpdate(
         { ...baseProp, level2_status: 'Đang niêm yết' },
-        'u004',
+        4,
         [],
       ),
     ).toBe(false);
   });
   it('từ chối khi có listing Đã duyệt', () => {
     expect(
-      canRequestPropertyUpdate(baseProp, 'u004', [
+      canRequestPropertyUpdate(baseProp, 4, [
         { property_id: 'LS-00001', listing_status: 'Đã duyệt' },
       ]),
     ).toBe(false);
   });
   it('cho phép khi không tin live và Lv1 hợp lệ', () => {
-    expect(canRequestPropertyUpdate(baseProp, 'u004', [])).toBe(true);
+    expect(canRequestPropertyUpdate(baseProp, 4, [])).toBe(true);
   });
   it('từ chối khi đang pending update', () => {
     expect(
       canRequestPropertyUpdate(
         { ...baseProp, update_request_status: UPDATE_REQUEST_PENDING },
-        'u004',
+        4,
         [],
       ),
     ).toBe(false);

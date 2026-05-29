@@ -1,0 +1,544 @@
+import fs from 'fs';
+import path from 'path';
+
+const dbPath = path.resolve('db.json');
+const rawData = fs.readFileSync(dbPath, 'utf8');
+const db = JSON.parse(rawData);
+
+console.log('--- STARTING MIGRATION OF POS & MOCK DATA ---');
+
+// 1. Rename existing POS name and ID fields in properties
+let updatedPropsCount = 0;
+db.properties = db.properties.map(p => {
+  let changed = false;
+  if (p.pos_name === 'POS Q1') {
+    p.pos_name = 'POS Quận 1';
+    p.pos_id = 1;
+    changed = true;
+  }
+  if (p.pos_name === 'POS Q.5') {
+    p.pos_name = 'POS Quận 5';
+    p.pos_id = 2;
+    changed = true;
+  }
+  if (changed) updatedPropsCount++;
+  return p;
+});
+console.log(`Updated ${updatedPropsCount} existing properties with new POS names/IDs.`);
+
+// 2. Rename existing POS name and ID fields in users
+let updatedUsersCount = 0;
+db.users = db.users.map(u => {
+  let changed = false;
+  if (u.pos_name === 'POS Q1') {
+    u.pos_name = 'POS Quận 1';
+    u.pos_id = 1;
+    changed = true;
+  }
+  if (u.pos_name === 'POS Q.5') {
+    u.pos_name = 'POS Quận 5';
+    u.pos_id = 2;
+    changed = true;
+  }
+  if (changed) updatedUsersCount++;
+  return u;
+});
+console.log(`Updated ${updatedUsersCount} existing users with new POS names/IDs.`);
+
+// 3. Define the new POS array to replace the old one
+db.pos = [
+  {
+    "id": 1,
+    "code": "Q1",
+    "name": "POS Quận 1",
+    "address": "Quận 1, TP.HCM",
+    "manager": "Hồng Bảo Quân",
+    "status": "active"
+  },
+  {
+    "id": 2,
+    "code": "Q5",
+    "name": "POS Quận 5",
+    "address": "Quận 5, TP.HCM",
+    "manager": "Trần Minh Quân",
+    "status": "active"
+  },
+  {
+    "id": 3,
+    "code": "BD",
+    "name": "POS Bình Dương",
+    "address": "Thủ Dầu Một, Bình Dương",
+    "manager": "Lê Huỳnh Đức",
+    "status": "active"
+  },
+  {
+    "id": 4,
+    "code": "Q7",
+    "name": "POS Quận 7",
+    "address": "Quận 7, TP.HCM",
+    "manager": "Võ Minh Khang",
+    "status": "active"
+  },
+  {
+    "id": 5,
+    "code": "TD",
+    "name": "POS Thủ Đức",
+    "address": "TP. Thủ Đức, TP.HCM",
+    "manager": "Phạm Minh Tuấn",
+    "status": "active"
+  }
+];
+console.log('Replaced POS table with 5 active POS branches.');
+
+// 4. Add new users if not already exist
+const newUsers = [
+  {
+    "id": "11",
+    "name": "Nguyễn Quốc Huy",
+    "role": "sales",
+    "pos_id": 2,
+    "pos_name": "POS Quận 5",
+    "email": "huynq.q5@ihouzz.com",
+    "phone": "0905011001",
+    "status": "active"
+  },
+  {
+    "id": "12",
+    "name": "Trần Minh Quân",
+    "role": "pos_manager",
+    "pos_id": 2,
+    "pos_name": "POS Quận 5",
+    "email": "pos_quan5@ihouzz.com",
+    "phone": "0905011002",
+    "status": "active"
+  },
+  {
+    "id": "13",
+    "name": "Trần Thanh Bình",
+    "role": "sales",
+    "pos_id": 3,
+    "pos_name": "POS Bình Dương",
+    "email": "binhtt.bd@ihouzz.com",
+    "phone": "0934111222",
+    "status": "active"
+  },
+  {
+    "id": "14",
+    "name": "Lê Huỳnh Đức",
+    "role": "pos_manager",
+    "pos_id": 3,
+    "pos_name": "POS Bình Dương",
+    "email": "pos_binhduong@ihouzz.com",
+    "phone": "0934333444",
+    "status": "active"
+  },
+  {
+    "id": "15",
+    "name": "Đặng Hoàng Phúc",
+    "role": "sales",
+    "pos_id": 4,
+    "pos_name": "POS Quận 7",
+    "email": "phucdh.q7@ihouzz.com",
+    "phone": "0907011001",
+    "status": "active"
+  },
+  {
+    "id": "16",
+    "name": "Võ Minh Khang",
+    "role": "pos_manager",
+    "pos_id": 4,
+    "pos_name": "POS Quận 7",
+    "email": "pos_quan7@ihouzz.com",
+    "phone": "0907011002",
+    "status": "active"
+  },
+  {
+    "id": "17",
+    "name": "Nguyễn Hoàng Nam",
+    "role": "sales",
+    "pos_id": 5,
+    "pos_name": "POS Thủ Đức",
+    "email": "namnh.td@ihouzz.com",
+    "phone": "0908888999",
+    "status": "active"
+  },
+  {
+    "id": "18",
+    "name": "Phạm Minh Tuấn",
+    "role": "pos_manager",
+    "pos_id": 5,
+    "pos_name": "POS Thủ Đức",
+    "email": "pos_thuduc@ihouzz.com",
+    "phone": "0908777666",
+    "status": "active"
+  }
+];
+
+let addedUsersCount = 0;
+newUsers.forEach(u => {
+  if (!db.users.some(existing => String(existing.id) === String(u.id))) {
+    db.users.push(u);
+    addedUsersCount++;
+  }
+});
+console.log(`Added ${addedUsersCount} new users to the database.`);
+
+// 5. Add new properties if not already exist
+const newProperties = [
+  {
+    "id": "LS-00040",
+    "propertyCode": "LS-00040",
+    "address": "212 Trần Hưng Đạo, P.11, Quận 5, TP.HCM",
+    "district": "Quận 5",
+    "ward": "Phường 11",
+    "houseNumber": "212",
+    "street": "Trần Hưng Đạo",
+    "province": "Thành phố Hồ Chí Minh",
+    "type": "Bán",
+    "price": 6800000000,
+    "priceUnit": "VNĐ",
+    "price_display": "6.8 Tỷ VNĐ",
+    "area": 92,
+    "bedrooms": 4,
+    "bathrooms": 3,
+    "direction": "Đông Nam",
+    "legal": "Sổ hồng riêng",
+    "legalStatus": "Sổ hồng riêng",
+    "level1_status": "Được duyệt",
+    "level2_status": "Đang niêm yết",
+    "warehouse_type": "Kho chuẩn",
+    "createdBy": "Nguyễn Quốc Huy",
+    "createdBy_id": 11,
+    "pos_id": 2,
+    "pos_name": "POS Quận 5",
+    "pos_manager": "Trần Minh Quân",
+    "createdAt": "2026-05-28T08:00:00Z",
+    "updatedAt": "2026-05-28T08:45:00Z",
+    "approvedBy": "Trần Minh Quân",
+    "approvedAt": "2026-05-28T08:45:00Z"
+  },
+  {
+    "id": "LS-00041",
+    "propertyCode": "LS-00041",
+    "address": "85 Nguyễn Trãi, P.2, Quận 5, TP.HCM",
+    "district": "Quận 5",
+    "ward": "Phường 2",
+    "houseNumber": "85",
+    "street": "Nguyễn Trãi",
+    "province": "Thành phố Hồ Chí Minh",
+    "type": "Thuê",
+    "price": 18000000,
+    "priceUnit": "VNĐ",
+    "price_display": "18 Triệu VNĐ/Tháng",
+    "area": 70,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "direction": "Tây",
+    "legal": "Hợp đồng thuê",
+    "legalStatus": "Hợp đồng thuê",
+    "level1_status": "Chờ POS duyệt",
+    "level2_status": "Chưa niêm yết",
+    "warehouse_type": null,
+    "createdBy": "Nguyễn Quốc Huy",
+    "createdBy_id": 11,
+    "pos_id": 2,
+    "pos_name": "POS Quận 5",
+    "pos_manager": "Trần Minh Quân",
+    "createdAt": "2026-05-28T09:20:00Z",
+    "updatedAt": "2026-05-28T09:20:00Z"
+  },
+  {
+    "id": "LS-00042",
+    "propertyCode": "LS-00042",
+    "address": "128 Đại lộ Bình Dương, P.Phú Hòa, Thủ Dầu Một, Bình Dương",
+    "district": "Thủ Dầu Một",
+    "ward": "Phú Hòa",
+    "houseNumber": "128",
+    "street": "Đại lộ Bình Dương",
+    "province": "Bình Dương",
+    "type": "Bán",
+    "price": 3200000000,
+    "priceUnit": "VNĐ",
+    "price_display": "3.2 Tỷ VNĐ",
+    "area": 85,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "direction": "Đông",
+    "legal": "Sổ hồng riêng",
+    "legalStatus": "Sổ hồng riêng",
+    "level1_status": "Được duyệt",
+    "level2_status": "Đang niêm yết",
+    "warehouse_type": "Kho chuẩn",
+    "createdBy": "Trần Thanh Bình",
+    "createdBy_id": 13,
+    "pos_id": 3,
+    "pos_name": "POS Bình Dương",
+    "pos_manager": "Lê Huỳnh Đức",
+    "createdAt": "2026-05-28T10:00:00Z",
+    "updatedAt": "2026-05-28T10:30:00Z",
+    "approvedBy": "Lê Huỳnh Đức",
+    "approvedAt": "2026-05-28T10:30:00Z"
+  },
+  {
+    "id": "LS-00043",
+    "propertyCode": "LS-00043",
+    "address": "45 Lê Hồng Phong, P.Phú Lợi, Thủ Dầu Một, Bình Dương",
+    "district": "Thủ Dầu Một",
+    "ward": "Phú Lợi",
+    "houseNumber": "45",
+    "street": "Lê Hồng Phong",
+    "province": "Bình Dương",
+    "type": "Thuê",
+    "price": 12000000,
+    "priceUnit": "VNĐ",
+    "price_display": "12 Triệu VNĐ/Tháng",
+    "area": 75,
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "direction": "Tây Nam",
+    "legal": "Hợp đồng thuê",
+    "legalStatus": "Hợp đồng thuê",
+    "level1_status": "Chờ POS duyệt",
+    "level2_status": "Chưa niêm yết",
+    "warehouse_type": null,
+    "createdBy": "Trần Thanh Bình",
+    "createdBy_id": 13,
+    "pos_id": 3,
+    "pos_name": "POS Bình Dương",
+    "pos_manager": "Lê Huỳnh Đức",
+    "createdAt": "2026-05-28T11:00:00Z",
+    "updatedAt": "2026-05-28T11:00:00Z"
+  },
+  {
+    "id": "LS-00044",
+    "propertyCode": "LS-00044",
+    "address": "27 Nguyễn Thị Thập, P.Tân Phú, Quận 7, TP.HCM",
+    "district": "Quận 7",
+    "ward": "Tân Phú",
+    "houseNumber": "27",
+    "street": "Nguyễn Thị Thập",
+    "province": "Thành phố Hồ Chí Minh",
+    "type": "Bán",
+    "price": 7500000000,
+    "priceUnit": "VNĐ",
+    "price_display": "7.5 Tỷ VNĐ",
+    "area": 105,
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "direction": "Nam",
+    "legal": "Sổ hồng riêng",
+    "legalStatus": "Sổ hồng riêng",
+    "level1_status": "Được đảm bảo",
+    "level2_status": "Đang niêm yết",
+    "warehouse_type": "Kho đảm bảo",
+    "createdBy": "Đặng Hoàng Phúc",
+    "createdBy_id": 15,
+    "pos_id": 4,
+    "pos_name": "POS Quận 7",
+    "pos_manager": "Võ Minh Khang",
+    "createdAt": "2026-05-28T12:00:00Z",
+    "updatedAt": "2026-05-28T12:40:00Z",
+    "approvedBy": "Võ Minh Khang",
+    "approvedAt": "2026-05-28T12:40:00Z"
+  },
+  {
+    "id": "LS-00045",
+    "propertyCode": "LS-00045",
+    "address": "16 Lâm Văn Bền, P.Tân Kiểng, Quận 7, TP.HCM",
+    "district": "Quận 7",
+    "ward": "Tân Kiểng",
+    "houseNumber": "16",
+    "street": "Lâm Văn Bền",
+    "province": "Thành phố Hồ Chí Minh",
+    "type": "Thuê",
+    "price": 25000000,
+    "priceUnit": "VNĐ",
+    "price_display": "25 Triệu VNĐ/Tháng",
+    "area": 88,
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "direction": "Đông Bắc",
+    "legal": "Hợp đồng thuê",
+    "legalStatus": "Hợp đồng thuê",
+    "level1_status": "Được duyệt",
+    "level2_status": "Chưa niêm yết",
+    "warehouse_type": "Kho chuẩn",
+    "createdBy": "Đặng Hoàng Phúc",
+    "createdBy_id": 15,
+    "pos_id": 4,
+    "pos_name": "POS Quận 7",
+    "pos_manager": "Võ Minh Khang",
+    "createdAt": "2026-05-28T13:00:00Z",
+    "updatedAt": "2026-05-28T13:45:00Z",
+    "approvedBy": "Võ Minh Khang",
+    "approvedAt": "2026-05-28T13:45:00Z"
+  },
+  {
+    "id": "LS-00046",
+    "propertyCode": "LS-00046",
+    "address": "99 Võ Văn Ngân, P.Bình Thọ, TP.Thủ Đức, TP.HCM",
+    "district": "Thủ Đức",
+    "ward": "Bình Thọ",
+    "houseNumber": "99",
+    "street": "Võ Văn Ngân",
+    "province": "Thành phố Hồ Chí Minh",
+    "type": "Bán",
+    "price": 5400000000,
+    "priceUnit": "VNĐ",
+    "price_display": "5.4 Tỷ VNĐ",
+    "area": 95,
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "direction": "Đông Nam",
+    "legal": "Sổ hồng riêng",
+    "legalStatus": "Sổ hồng riêng",
+    "level1_status": "Được duyệt",
+    "level2_status": "Đang niêm yết",
+    "warehouse_type": "Kho chuẩn",
+    "createdBy": "Nguyễn Hoàng Nam",
+    "createdBy_id": 17,
+    "pos_id": 5,
+    "pos_name": "POS Thủ Đức",
+    "pos_manager": "Phạm Minh Tuấn",
+    "createdAt": "2026-05-28T14:00:00Z",
+    "updatedAt": "2026-05-28T14:35:00Z",
+    "approvedBy": "Phạm Minh Tuấn",
+    "approvedAt": "2026-05-28T14:35:00Z"
+  },
+  {
+    "id": "LS-00047",
+    "propertyCode": "LS-00047",
+    "address": "38 Kha Vạn Cân, P.Hiệp Bình Chánh, TP.Thủ Đức, TP.HCM",
+    "district": "Thủ Đức",
+    "ward": "Hiệp Bình Chánh",
+    "houseNumber": "38",
+    "street": "Kha Vạn Cân",
+    "province": "Thành phố Hồ Chí Minh",
+    "type": "Thuê",
+    "price": 17000000,
+    "priceUnit": "VNĐ",
+    "price_display": "17 Triệu VNĐ/Tháng",
+    "area": 82,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "direction": "Bắc",
+    "legal": "Hợp đồng thuê",
+    "legalStatus": "Hợp đồng thuê",
+    "level1_status": "Chờ POS duyệt",
+    "level2_status": "Chưa niêm yết",
+    "warehouse_type": null,
+    "createdBy": "Nguyễn Hoàng Nam",
+    "createdBy_id": 17,
+    "pos_id": 5,
+    "pos_name": "POS Thủ Đức",
+    "pos_manager": "Phạm Minh Tuấn",
+    "createdAt": "2026-05-28T15:00:00Z",
+    "updatedAt": "2026-05-28T15:00:00Z"
+  }
+];
+
+let addedPropsCount = 0;
+newProperties.forEach(p => {
+  if (!db.properties.some(existing => String(existing.id) === String(p.id))) {
+    db.properties.push(p);
+    addedPropsCount++;
+  }
+});
+console.log(`Added ${addedPropsCount} new properties to the database.`);
+
+// 6. Add new listings if not already exist
+const newListings = [
+  {
+    "id": "LT-00040",
+    "property_id": "LS-00040",
+    "title": "Nhà phố Quận 5 gần Trần Hưng Đạo, pháp lý rõ ràng",
+    "description": "Nhà phố vị trí trung tâm Quận 5, diện tích 92m2, kết cấu phù hợp vừa ở vừa kinh doanh. Khu dân cư sầm uất, pháp lý sổ hồng riêng.",
+    "images": [
+      "https://picsum.photos/seed/ihz-LT40-a/1200/800",
+      "https://picsum.photos/seed/ihz-LT40-b/1200/800"
+    ],
+    "contact_phone": "0905 011 001",
+    "listing_status": "Đã duyệt",
+    "createdBy": "Nguyễn Quốc Huy",
+    "createdBy_id": 11,
+    "createdAt": "2026-05-28T09:00:00Z",
+    "updatedAt": "2026-05-28T09:25:00Z",
+    "expiredAt": "2026-08-28T09:25:00Z",
+    "approvedBy": "Nguyễn Thị MKT",
+    "approvedBy_id": 7,
+    "approvedAt": "2026-05-28T09:25:00Z"
+  },
+  {
+    "id": "LT-00042",
+    "property_id": "LS-00042",
+    "title": "Căn hộ Thủ Dầu Một 85m2, mặt tiền Đại lộ Bình Dương",
+    "description": "Căn hộ vị trí thuận tiện tại Thủ Dầu Một, 2 phòng ngủ, không gian thoáng, phù hợp gia đình trẻ hoặc đầu tư cho thuê.",
+    "images": [
+      "https://picsum.photos/seed/ihz-LT42-a/1200/800",
+      "https://picsum.photos/seed/ihz-LT42-b/1200/800"
+    ],
+    "contact_phone": "0934 111 222",
+    "listing_status": "Đã duyệt",
+    "createdBy": "Trần Thanh Bình",
+    "createdBy_id": 13,
+    "createdAt": "2026-05-28T10:45:00Z",
+    "updatedAt": "2026-05-28T11:10:00Z",
+    "expiredAt": "2026-08-28T11:10:00Z",
+    "approvedBy": "Nguyễn Thị MKT",
+    "approvedBy_id": 7,
+    "approvedAt": "2026-05-28T11:10:00Z"
+  },
+  {
+    "id": "LT-00044",
+    "property_id": "LS-00044",
+    "title": "Căn hộ Quận 7 khu Tân Phú, kho đảm bảo, vị trí đẹp",
+    "description": "Tài sản thuộc kho đảm bảo, vị trí thuận tiện di chuyển Phú Mỹ Hưng, diện tích 105m2, pháp lý rõ ràng, phù hợp khách mua ở thực.",
+    "images": [
+      "https://picsum.photos/seed/ihz-LT44-a/1200/800",
+      "https://picsum.photos/seed/ihz-LT44-b/1200/800"
+    ],
+    "contact_phone": "0907 011 001",
+    "listing_status": "Đã duyệt",
+    "createdBy": "Đặng Hoàng Phúc",
+    "createdBy_id": 15,
+    "createdAt": "2026-05-28T13:00:00Z",
+    "updatedAt": "2026-05-28T13:30:00Z",
+    "expiredAt": "2026-08-28T13:30:00Z",
+    "approvedBy": "Nguyễn Thị MKT",
+    "approvedBy_id": 7,
+    "approvedAt": "2026-05-28T13:30:00Z"
+  },
+  {
+    "id": "LT-00046",
+    "property_id": "LS-00046",
+    "title": "Nhà phố Thủ Đức gần Võ Văn Ngân, 95m2, sổ hồng riêng",
+    "description": "Nhà phố khu trung tâm TP.Thủ Đức, gần trục Võ Văn Ngân, diện tích 95m2, thiết kế 3 phòng ngủ, phù hợp gia đình hoặc đầu tư dài hạn.",
+    "images": [
+      "https://picsum.photos/seed/ihz-LT46-a/1200/800",
+      "https://picsum.photos/seed/ihz-LT46-b/1200/800"
+    ],
+    "contact_phone": "0908 888 999",
+    "listing_status": "Đã duyệt",
+    "createdBy": "Nguyễn Hoàng Nam",
+    "createdBy_id": 17,
+    "createdAt": "2026-05-28T15:00:00Z",
+    "updatedAt": "2026-05-28T15:20:00Z",
+    "expiredAt": "2026-08-28T15:20:00Z",
+    "approvedBy": "Nguyễn Thị MKT",
+    "approvedBy_id": 7,
+    "approvedAt": "2026-05-28T15:20:00Z"
+  }
+];
+
+let addedListingsCount = 0;
+newListings.forEach(l => {
+  if (!db.listings.some(existing => String(existing.id) === String(l.id))) {
+    db.listings.push(l);
+    addedListingsCount++;
+  }
+});
+console.log(`Added ${addedListingsCount} new listings to the database.`);
+
+// Write the updated database back
+fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf8');
+console.log('--- MIGRATION COMPLETED SUCCESSFULLY ---');

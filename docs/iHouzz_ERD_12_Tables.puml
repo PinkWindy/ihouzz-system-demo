@@ -1,0 +1,201 @@
+@startuml iHouzz_ERD_12_Tables
+!theme plain
+title iHouzz — ERD 12 bảng (chuẩn SRS / mục tiêu hệ thống)\nPlantUML erDiagram
+
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam linetype ortho
+
+' ------------------------------------------------------------
+' 12 bảng — khớp sơ đồ bạn gửi (tên cột / kiểu / PK-FK)
+' ------------------------------------------------------------
+
+entity Address_Master {
+  * address_id : INT <<PK>>
+  --
+  province : VARCHAR(50)
+  district : VARCHAR(50)
+  ward : VARCHAR(50)
+  street : VARCHAR(100)
+  house_number : VARCHAR(20)
+  full_address : TEXT
+}
+
+entity Root_Property {
+  * root_property_id : INT <<PK>>
+  --
+  * address_id : INT <<FK>>
+  * created_by : INT <<FK>>
+  created_at : TIMESTAMP
+  note : TEXT
+}
+
+entity Properties {
+  * property_id : INT <<PK>>
+  --
+  * ls_code : VARCHAR(10) <<UNIQUE>>
+  * root_property_id : INT <<FK>>
+  * pos_id : VARCHAR(10) <<FK>>
+  listing_type : ENUM__Bán_Cho_thuê
+  warehouse_type : ENUM__Standard_Guaranteed
+  status_lv1 : VARCHAR(50)
+  status_lv2 : VARCHAR(50)
+  area : DECIMAL(10,2)
+  price : BIGINT
+  bedroom_count : INT
+  toilet_count : INT
+  * created_by : INT <<FK>>
+  approved_by : INT <<FK>>
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity POS_Master {
+  * pos_id : VARCHAR(10) <<PK>>
+  --
+  pos_name : VARCHAR(100)
+  pos_address : TEXT
+  * pos_manager_id : INT <<FK>>
+  is_active : BOOLEAN
+  created_at : TIMESTAMP
+}
+
+entity Listings {
+  * listing_id : INT <<PK>>
+  --
+  * property_id : INT <<FK>>
+  status : VARCHAR(50)
+  unlist_reason : VARCHAR(50)
+  * submitted_by : INT <<FK>>
+  approved_by : INT <<FK>>
+  created_at : TIMESTAMP
+  expired_at : TIMESTAMP
+}
+
+entity Media {
+  * media_id : INT <<PK>>
+  --
+  * property_id : INT <<FK>>
+  * listing_id : INT <<FK>>
+  media_type : VARCHAR(20)
+  file_url : TEXT
+  * uploaded_by : INT <<FK>>
+  uploaded_at : TIMESTAMP
+}
+
+entity Listing_Content {
+  * content_id : INT <<PK>>
+  --
+  * listing_id : INT <<FK>>
+  title : VARCHAR(255)
+  description : TEXT
+  version : INT
+  is_current : BOOLEAN
+  * edited_by : INT <<FK>>
+  created_at : TIMESTAMP
+}
+
+entity Users {
+  * user_id : INT <<PK>>
+  --
+  full_name : VARCHAR(100)
+  * email : VARCHAR(150) <<UNIQUE>>
+  password_hash : TEXT
+  * role_id : INT <<FK>>
+  pos_id : VARCHAR(10) <<FK>>
+  is_active : BOOLEAN
+  created_at : TIMESTAMP
+}
+
+entity Roles {
+  * role_id : INT <<PK>>
+  --
+  role_name : VARCHAR(50)
+  description : TEXT
+  permissions : JSON
+}
+
+entity Approvals {
+  * approval_id : INT <<PK>>
+  --
+  entity_type : VARCHAR(20)
+  entity_id : INT
+  action : VARCHAR(50)
+  * performed_by : INT <<FK>>
+  reason : TEXT
+  performed_at : TIMESTAMP
+}
+
+entity Status_History {
+  * history_id : INT <<PK>>
+  --
+  entity_type : VARCHAR(20)
+  entity_id : INT
+  from_status : VARCHAR(50)
+  to_status : VARCHAR(50)
+  * changed_by : INT <<FK>>
+  changed_at : TIMESTAMP
+  note : TEXT
+}
+
+entity Audit_Logs {
+  * log_id : BIGINT <<PK>>
+  --
+  user_id : INT <<FK>>
+  action : VARCHAR(100)
+  table_name : VARCHAR(50)
+  record_id : INT
+  old_value : JSON
+  new_value : JSON
+  ip_address : VARCHAR(45)
+  logged_at : TIMESTAMP
+}
+
+' ------------------------------------------------------------
+' Quan hệ (theo nhãn trên sơ đồ)
+' ------------------------------------------------------------
+
+Address_Master ||--|| Root_Property : "địa chỉ"
+
+Root_Property ||--o{ Properties : "có nhiều mã LS-"
+
+POS_Master ||--o{ Properties : "chứa"
+
+Properties ||--o{ Listings : "có bài đăng"
+
+Users ||--o{ Listings : "submitted_by / approved_by"
+
+Properties ||--o{ Media : "có media"
+
+Listings ||--o{ Media : "dùng media"
+
+Listings ||--o{ Listing_Content : "có nội dung"
+
+Users ||--o{ Listing_Content : "edited_by"
+
+Roles ||--o{ Users : "thuộc vai trò"
+
+POS_Master ||--o{ Users : "pos_id (chi nhánh)"
+
+Users ||--o{ POS_Master : "pos_manager_id (GĐ)"
+
+Users ||--o{ Root_Property : "created_by"
+
+Users ||--o{ Properties : "created_by / approved_by"
+
+Users ||--o{ Approvals : "thực hiện bởi"
+
+Users ||--o{ Status_History : "thay đổi bởi"
+
+Users ||--o{ Audit_Logs : "ghi bởi"
+
+note bottom of Approvals
+  **Approvals**: tham chiếu đa hình **entity_type** + **entity_id**
+  (Property / Listing) — không FK cứng tới bảng đích.
+end note
+
+note bottom of Status_History
+  **Status_History**: tương tự **entity_type** + **entity_id**.
+end note
+
+@enduml

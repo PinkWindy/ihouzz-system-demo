@@ -1,7 +1,82 @@
-import { useState, useEffect } from 'react';
-import { readSessionUser } from '../utils/listingWorkflow';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  API,
+  readSessionUser,
+  formatListingId,
+  formatPropertyId,
+  postEntityAudit,
+  AUDIT_ACTION_TYPE,
+  SESSION_CHANGED_EVENT,
+} from '../utils/listingWorkflow';
 
-const API = 'http://localhost:5000';
+/** UC012 — Export CSV (đủ trường pháp lý / vận hành demo + action_type / modified_fields). */
+const AUDIT_CSV_HEADERS = [
+  'STT',
+  'ID bản ghi log',
+  'Thời gian (ISO 8601)',
+  'Ngày (VN)',
+  'Giờ (VN)',
+  'Hành động / Sự kiện',
+  'action_type (canonical)',
+  'entityId',
+  'listing_id',
+  'property_id',
+  'user_id',
+  'Người thực hiện (tên)',
+  'Chi nhánh POS',
+  'Vai trò (suy ra)',
+  'Trạng thái cũ',
+  'Trạng thái mới',
+  'Lý do',
+  'Chi tiết / Context',
+  'modified_fields (JSON)',
+  'Loại đối tượng',
+  'Mã tin (LT)',
+  'Mã TS (LS)',
+  'IP ghi nhận',
+  'User-Agent',
+  'Phiên / Session ref',
+  'Kênh nguồn',
+  'Kết quả / Outcome',
+  'Mã lô export',
+  'Thời điểm xuất file',
+];
+
+function normalizeJsonList(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+/** Ngày local YYYY-MM-DD — đồng bộ F7/F9/F10 (tránh lệch UTC `toISOString`). */
+function formatLocalYmd(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function defaultF11DateRange() {
+  const now = new Date();
+  return {
+    from: formatLocalYmd(new Date(now.getFullYear(), now.getMonth(), 1)),
+    to: formatLocalYmd(now),
+  };
+}
+
+function auditCsvCell(v) {
+  const s = v == null ? '' : String(v);
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+function resolveAuditActor(log, userList) {
+  if (log.user_id) {
+    const u = userList.find((x) => x.id === log.user_id);
+    if (u) return { pos: u.pos_name || '', role: u.role || '' };
+  }
+  const byName = userList.find((x) => x.name === log.user || x.email === log.user);
+  return { pos: byName?.pos_name || '', role: byName?.role || '' };
+}
 
 const ACTION_ICON = {
   'Tạo': { icon: 'bi-plus-circle-fill', color: '#1976d2' },
@@ -32,7 +107,22 @@ function AccessGuard({ role }) {
 }
 
 export default function Feature11_Audit() {
-  const auditRole = readSessionUser().role;
+  const [user, setUser] = useState(() => readSessionUser());
+  const auditRole = user?.role || 'guest';
+
+  useEffect(() => {
+    const bump = () => setUser(readSessionUser());
+    const onStorage = (e) => {
+      if (e.key === 'user' || e.key === 'user_role' || e.key === null) bump();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(SESSION_CHANGED_EVENT, bump);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(SESSION_CHANGED_EVENT, bump);
+    };
+  }, []);
+
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -43,36 +133,51 @@ export default function Feature11_Audit() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  const { from: f11From, to: f11To } = defaultF11DateRange();
+  const [dateFrom, setDateFrom] = useState(f11From);
+  const [dateTo, setDateTo] = useState(f11To);
+  const [users, setUsers] = useState([]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [logRes, uRaw] = await Promise.all([
+        // json-server v1: `_order` không phải reserved → bị parse thành filter (0 bản ghi). Desc dùng tiền tố `-` (sort-on).
+        fetch(`${API}/logs?_sort=-timestamp&_per_page=10000`).then((r) => r.json()),
+        fetch(`${API}/users`).then((r) => r.json()).catch(() => []),
+      ]);
+      setLogs(normalizeJsonList(logRes));
+      setUsers(normalizeJsonList(uRaw));
+    } catch (err) {
+      console.error('Audit load error', err);
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (auditRole !== 'admin') return;
     load();
-  }, [auditRole]);
-
-  const load = async () => {
-    setLoading(true);
-    const data = await fetch(`${API}/logs`).then(r => r.json());
-    setLogs(data.slice().reverse()); // newest first
-    setLoading(false);
-  };
+  }, [auditRole, load]);
 
   if (auditRole !== 'admin') return (
-    <div className="p-4" style={{ background: '#fff0f0', minHeight: '100vh' }}>
+    <div className="p-4" style={{ background: 'var(--ih-audit-deny-bg, #fff0f0)', minHeight: '100vh' }}>
       <h4 className="fw-bold mb-3 text-danger">
-        <i className="bi bi-shield-lock me-2"></i>Feature 11 – Audit Trail (UC012)
+        <i className="bi bi-shield-lock me-2"></i>Nhật ký thao tác
       </h4>
       <AccessGuard role={auditRole} />
     </div>
   );
 
   const postExportLog = async () => {
-    await fetch(`${API}/logs`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        timestamp: new Date().toISOString(),
-        action: `[F11] Export Audit Log · ${filtered.length} bản ghi`,
-        entityId: 'SYSTEM',
-        user: 'Admin (F11)',
-      }),
+    const actor = user.name || 'Admin';
+    await postEntityAudit({
+      action: `Export nhật ký thao tác · ${filtered.length} bản ghi`,
+      actionType: AUDIT_ACTION_TYPE.AUDIT_EXPORT_RUN,
+      entityId: 'SYSTEM',
+      user: actor,
+      user_id: user.id || '',
     });
   };
 
@@ -80,14 +185,78 @@ export default function Feature11_Audit() {
     setExporting(true);
     await new Promise(r => setTimeout(r, 1200)); // simulate latency
     await postExportLog();
-    const csv = ['Thời gian,Hành động,Đối tượng,Người thực hiện',
-      ...filtered.map(l => `"${l.timestamp}","${l.action}","${l.entityId}","${l.user}"`)
-    ].join('\n');
+    if (AUDIT_CSV_HEADERS.length !== 29) {
+      console.error('F11 CSV: số cột không đúng 29');
+    }
+    const batchId = `EXP-${Date.now()}`;
+    const exportTs = new Date().toISOString();
+    const dataRows = filtered.map((l, idx) => {
+      const actor = resolveAuditActor(l, users);
+      const ts = l.timestamp || '';
+      const day = ts.slice(0, 10);
+      const time = ts.length > 11 ? ts.slice(11, 19) : '';
+      const entityId = l.entityId != null ? String(l.entityId) : '';
+      const listingIdRaw = l.listing_id != null ? String(l.listing_id) : entityId;
+      let entityType = 'Hệ thống';
+      if (entityId.startsWith('LT-')) entityType = 'Tin đăng';
+      else if (entityId.startsWith('LS-')) entityType = 'Tài sản';
+      else if (entityId.startsWith('ACCOUNT:')) entityType = 'Tài khoản';
+      else if (entityId === 'ACCOUNT') entityType = 'Tài khoản';
+      else if (entityId && entityId !== 'SYSTEM') entityType = 'Khác';
+      const lt = formatListingId(l.listingCode || listingIdRaw || entityId);
+      const pidRaw = l.property_id != null ? String(l.property_id) : '';
+      const ls = pidRaw.startsWith('LS-') ? formatPropertyId(pidRaw) : pidRaw;
+      const outcome = l.new_status || (l.action ? String(l.action).slice(0, 120) : '');
+      let modifiedJson = '';
+      if (l.modified_fields != null) {
+        try {
+          modifiedJson = typeof l.modified_fields === 'string' ? l.modified_fields : JSON.stringify(l.modified_fields);
+        } catch {
+          modifiedJson = String(l.modified_fields);
+        }
+      }
+      const cells = [
+        idx + 1,
+        l.id ?? '',
+        ts,
+        day,
+        time,
+        l.action || '',
+        l.action_type || '',
+        entityId,
+        listingIdRaw,
+        l.property_id || '',
+        l.user_id || '',
+        l.user || '',
+        actor.pos,
+        actor.role,
+        l.old_status || '',
+        l.new_status || '',
+        l.reason || '',
+        l.detail || '',
+        modifiedJson,
+        entityType,
+        lt,
+        ls,
+        '',
+        '',
+        '',
+        'Web / Demo',
+        outcome,
+        batchId,
+        exportTs,
+      ];
+      return cells.map(auditCsvCell).join(',');
+    });
+    const csv = [AUDIT_CSV_HEADERS.map(auditCsvCell).join(','), ...dataRows].join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
     a.download = `ihouzz_audit_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click(); URL.revokeObjectURL(url);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     setExporting(false); setShowExportModal(false);
     load(); // refresh to show the export log itself
   };
@@ -96,22 +265,44 @@ export default function Feature11_Audit() {
   const allEntities = [...new Set(logs.map(l => l.entityId).filter(Boolean))];
 
   const filtered = logs.filter(l => {
-    if (search && !l.action?.toLowerCase().includes(search.toLowerCase()) && !l.entityId?.toLowerCase().includes(search.toLowerCase())) return false;
+    const entitySearch = String(l.entityId ?? '').toLowerCase();
+    if (search && !l.action?.toLowerCase().includes(search.toLowerCase()) && !entitySearch.includes(search.toLowerCase())) return false;
     if (filterUser && l.user !== filterUser) return false;
-    if (filterEntity && l.entityId !== filterEntity) return false;
+    if (filterEntity && String(l.entityId ?? '') !== String(filterEntity)) return false;
+    if (l.timestamp) {
+      const d = l.timestamp.slice(0, 10);
+      if (dateFrom && d < dateFrom) return false;
+      if (dateTo && d > dateTo) return false;
+    }
     return true;
   });
 
+  const getUserDisplay = (userName) => {
+    if (!userName) return '—';
+    const u = users.find(x => x.name === userName || x.email === userName);
+    if (u) return `${u.name} · ${u.pos_name || 'Hệ thống'}`;
+    return userName;
+  };
+
+  const formatEntity = (id) => {
+    if (id == null || id === '') return id;
+    const s = String(id);
+    if (s === 'SYSTEM' || s === 'ACCOUNT') return s;
+    if (s.startsWith('ACCOUNT:')) return s;
+    if (s.startsWith('LT-')) return formatListingId(s);
+    return formatPropertyId(s);
+  };
+
   return (
-    <div className="p-4" style={{ background: '#0d1117', minHeight: '100vh', color: '#e6edf3' }}>
+    <div className="p-4" style={{ background: 'var(--ih-audit-bg, #0d1117)', minHeight: '100vh', color: '#e6edf3' }}>
       {/* Header */}
       <div className="d-flex justify-content-between align-items-start mb-4">
         <div>
           <h4 className="fw-bold mb-1" style={{ color: '#58a6ff' }}>
-            <i className="bi bi-journal-text me-2"></i>Feature 11 – Audit Trail (UC012)
+            <i className="bi bi-journal-text me-2"></i>Nhật ký thao tác
           </h4>
           <small style={{ color: '#8b949e' }}>
-            Chỉ Admin · Read-only · Append-only · Immutable · Forensic-grade
+            Chỉ Admin · Read-only · Append-only · Immutable
           </small>
         </div>
         <div className="d-flex gap-2">
@@ -132,14 +323,16 @@ export default function Feature11_Audit() {
           { label: 'Tổng sự kiện', value: logs.length, color: '#58a6ff', icon: 'bi-list-ul' },
           { label: 'Người dùng', value: allUsers.length, color: '#3fb950', icon: 'bi-people' },
           { label: 'Đối tượng', value: allEntities.length, color: '#d29922', icon: 'bi-database' },
-          { label: 'Hôm nay', value: logs.filter(l => l.timestamp?.startsWith(new Date().toISOString().slice(0, 10))).length, color: '#f78166', icon: 'bi-calendar-day' },
+          { label: 'Hôm nay', value: logs.filter(l => l.timestamp?.startsWith(formatLocalYmd(new Date()))).length, color: '#f78166', icon: 'bi-calendar-day' },
         ].map(s => (
           <div key={s.label} className="col-6 col-md-3">
             <div className="card border-0 p-3 d-flex flex-row align-items-center gap-3"
               style={{ background: '#161b22', border: '1px solid #30363d' }}>
               <i className={`bi ${s.icon} fs-4`} style={{ color: s.color }}></i>
               <div>
-                <div className="fw-bold fs-5 lh-1">{s.value}</div>
+                <div className="fw-bold fs-5 lh-1" style={{ color: '#f0f6fc' }}>
+                  {s.value}
+                </div>
                 <div className="small" style={{ color: '#8b949e' }}>{s.label}</div>
               </div>
             </div>
@@ -180,15 +373,34 @@ export default function Feature11_Audit() {
             <select className="form-select form-select-sm" style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }}
               value={filterUser} onChange={e => setFilterUser(e.target.value)}>
               <option value="">Tất cả người thực hiện</option>
-              {allUsers.map(u => <option key={u} value={u}>{u}</option>)}
+              {allUsers.map(u => <option key={u} value={u}>{getUserDisplay(u)}</option>)}
             </select>
           </div>
           <div className="col-md-3">
             <select className="form-select form-select-sm" style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3' }}
               value={filterEntity} onChange={e => setFilterEntity(e.target.value)}>
               <option value="">Tất cả đối tượng</option>
-              {allEntities.map(e => <option key={e} value={e}>{e}</option>)}
+              {allEntities.map(e => <option key={e} value={e}>{formatEntity(e)}</option>)}
             </select>
+          </div>
+          <div className="col-md-4 d-flex align-items-center gap-2">
+            <input type="date" className="form-control form-control-sm" style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', width: 130 }}
+              value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <span style={{ color: '#8b949e' }}>—</span>
+            <input type="date" className="form-control form-control-sm" style={{ background: '#0d1117', border: '1px solid #30363d', color: '#e6edf3', width: 130 }}
+              value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            <button type="button" className="btn btn-sm btn-outline-secondary" style={{ borderColor: '#30363d', color: '#8b949e' }}
+              onClick={() => {
+                const r = defaultF11DateRange();
+                setDateFrom(r.from);
+                setDateTo(r.to);
+              }}
+              title="Đặt lại: đầu tháng → hôm nay"
+            >
+              Đặt lại
+            </button>
+            <button type="button" className="btn btn-sm btn-outline-secondary" style={{ borderColor: '#30363d', color: '#8b949e' }}
+              onClick={() => { setDateFrom(''); setDateTo(''); }}>×</button>
           </div>
           <div className="col-md-2 d-flex align-items-center">
             <small style={{ color: '#8b949e' }}>{filtered.length} / {logs.length} bản ghi</small>
@@ -224,9 +436,9 @@ export default function Feature11_Audit() {
                   <div className="flex-grow-1">
                     <div className="small" style={{ color: '#e6edf3', lineHeight: 1.5 }}>{l.action}</div>
                     <div className="d-flex gap-3 mt-1 flex-wrap">
-                      <span className="badge" style={{ background: '#21262d', color: '#58a6ff' }}>{l.entityId}</span>
+                      <span className="badge" style={{ background: '#21262d', color: '#58a6ff' }}>{formatEntity(l.entityId)}</span>
                       <span className="small" style={{ color: '#8b949e' }}>
-                        <i className="bi bi-person me-1"></i>{l.user}
+                        <i className="bi bi-person me-1"></i>{getUserDisplay(l.user)}
                       </span>
                     </div>
                   </div>
@@ -265,8 +477,8 @@ export default function Feature11_Audit() {
                   <div className="flex-grow-1" style={{ paddingBottom: 4 }}>
                     <div className="small" style={{ color: '#e6edf3' }}>{l.action}</div>
                     <div className="d-flex gap-2 mt-1 flex-wrap">
-                      <span style={{ color: '#58a6ff', fontSize: 11 }}>{l.entityId}</span>
-                      <span style={{ color: '#8b949e', fontSize: 11 }}>· {l.user}</span>
+                      <span style={{ color: '#58a6ff', fontSize: 11 }}>{formatEntity(l.entityId)}</span>
+                      <span style={{ color: '#8b949e', fontSize: 11 }}>· {getUserDisplay(l.user)}</span>
                       <span style={{ color: '#8b949e', fontSize: 11 }}>· {l.timestamp ? new Date(l.timestamp).toLocaleString('vi-VN') : ''}</span>
                     </div>
                   </div>
@@ -292,8 +504,8 @@ export default function Feature11_Audit() {
           <div className="row g-3">
             {[
               ['Thời gian', selected.timestamp ? new Date(selected.timestamp).toLocaleString('vi-VN') : '—'],
-              ['Đối tượng', selected.entityId],
-              ['Người thực hiện', selected.user],
+              ['Đối tượng', formatEntity(selected.entityId)],
+              ['Người thực hiện', getUserDisplay(selected.user)],
               ['Hành động', selected.action],
             ].map(([k, v]) => (
               <div key={k} className="col-md-6">
@@ -331,7 +543,7 @@ export default function Feature11_Audit() {
                   <div className="fw-semibold mb-2">Phạm vi export:</div>
                   <div className="p-2 rounded small" style={{ background: '#0d1117', border: '1px solid #30363d' }}>
                     <div>📊 {filtered.length} bản ghi (theo bộ lọc hiện tại)</div>
-                    <div className="mt-1" style={{ color: '#8b949e' }}>Format: CSV · Encoding: UTF-8 BOM</div>
+                    <div className="mt-1" style={{ color: '#8b949e' }}>Format: CSV · UTF-8 BOM · {AUDIT_CSV_HEADERS.length} cột</div>
                   </div>
                 </div>
               </div>

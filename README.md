@@ -48,7 +48,7 @@ Hệ thống sử dụng **ReactJS (Vite)** cho Frontend và **json-server** là
    
    - **Terminal 1 (Chạy DB Backend):**
      ```bash
-     npm run server
+     npm run api
      ```
      *(Backend sẽ chạy ở `http://localhost:5000`)*
 
@@ -66,6 +66,10 @@ Hệ thống sử dụng **ReactJS (Vite)** cho Frontend và **json-server** là
 - Role: `pos_manager` (GĐ POS)
 - Role: `sales` (Đầu chủ)
 - Role: `marketing` (Chuyên viên MKT)
+
+## Job niêm yết (UC005 — AC5-009 / AC5-010)
+
+Trong `api-server.mjs` có **job mô phỏng** nhắc hết hạn (7 ngày) và tự hết hạn (`listingExpiryJob.mjs`). **Mặc định không quét định kỳ** (không tự sửa `db.json`). Chạy tay: `POST http://localhost:5000/internal/listing-expiry-run`. Chi tiết env + kịch bản thuyết trình: [`docs/iHouzz_Kich_ban_Thuyet_trinh_Listing_Expiry_Cron.md`](docs/iHouzz_Kich_ban_Thuyet_trinh_Listing_Expiry_Cron.md).
 
 ## 📁 Tài liệu đính kèm
 - Business Requirement Document (BRD)
