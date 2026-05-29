@@ -6,13 +6,10 @@ dirs.forEach(dir => {
     if (!file.endsWith('.js') && !file.endsWith('.jsx')) return;
     const fp = path.join(dir, file);
     let code = fs.readFileSync(fp, 'utf8');
-    if (code.includes('API_BASE_URL')) {
-      // Remove all faulty imports
-      code = code.replace(/import \{ API_BASE_URL \} from '\.\.\/config';\n/g, '');
-      // Insert at the absolute top
-      code = "import { API_BASE_URL } from '../config';\n" + code;
+    if (code.includes("'../config'")) {
+      code = code.replace(/'\.\.\/config'/g, "'../config.js'");
       fs.writeFileSync(fp, code);
-      console.log('Fixed', fp);
+      console.log('Fixed ext', fp);
     }
   });
 });

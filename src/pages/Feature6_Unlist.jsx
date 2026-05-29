@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL } from '../config.js';
 import { useState, useEffect } from 'react';
 import { formatListingId, formatPropertyId, postInAppNotification, postAuditLog, AUDIT_ACTION_TYPE } from '../utils/listingWorkflow';
 import { normalizeUserId, sameUserId } from '../utils/userId.js';

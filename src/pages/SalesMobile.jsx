@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL } from '../config.js';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import SmartAddress from '../components/SmartAddress';

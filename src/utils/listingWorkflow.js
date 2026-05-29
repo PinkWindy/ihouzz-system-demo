@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL } from '../config.js';
 /** UC004 / UC005 — hằng số & helper gọi API json-server */
 
 import { formatPropertyPriceDisplay } from './permissions.js';
