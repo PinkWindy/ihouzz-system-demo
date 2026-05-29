@@ -315,7 +315,8 @@ function Feature1_Login() {
       setLoginLock(null);
       startMfaStep();
     } catch {
-      setError('Không thể kết nối máy chủ. Hãy chắc chắn API đang chạy ở cổng 5000.');
+      const hint = API_BASE_URL.includes('localhost') ? ' ở cổng 5000' : ` tại ${API_BASE_URL}`;
+      setError(`Không thể kết nối máy chủ. Hãy chắc chắn API đang chạy${hint}.`);
     } finally {
       setLoginLoading(false);
     }
@@ -501,7 +502,8 @@ function Feature1_Login() {
     try {
       await completeLogin();
     } catch {
-      setError('Không thể kết nối máy chủ. Hãy chắc chắn API đang chạy ở cổng 5000.');
+      const hint = API_BASE_URL.includes('localhost') ? ' ở cổng 5000' : ` tại ${API_BASE_URL}`;
+      setError(`Không thể kết nối máy chủ. Hãy chắc chắn API đang chạy${hint}.`);
     } finally {
       setOtpSubmitting(false);
     }

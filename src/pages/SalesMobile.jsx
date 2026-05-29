@@ -540,8 +540,9 @@ function SalesMobile() {
       setListings(normalizeJsonServerList(resL.data));
     } catch (err) {
       console.error("SalesMobile fetchData error", err);
+      const hint = API_BASE_URL.includes('localhost') ? ' tại cổng 5000' : ` tại ${API_BASE_URL}`;
       setFetchError(
-        err?.response?.data?.message || err?.message || 'Không tải được dữ liệu. Hãy chạy API json-server tại cổng 5000.',
+        err?.response?.data?.message || err?.message || `Không tải được dữ liệu. Hãy chạy API json-server${hint}.`,
       );
     }
   }, []);
