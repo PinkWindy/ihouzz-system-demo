@@ -313,7 +313,7 @@ function SalesMobile() {
     );
     const changes = diffPropertyUpdate(upTarget, pendingToSend);
     try {
-      await axios.patch(`\${API_BASE_URL}/properties/${encodeURIComponent(upTarget.id)}`, {
+      await axios.patch(`${API_BASE_URL}/properties/${encodeURIComponent(upTarget.id)}`, {
         ...meta,
         pending_update_payload: pendingToSend,
       });
@@ -617,7 +617,7 @@ function SalesMobile() {
     }
     setSubmitting(true);
     try {
-      const res = await axios.get(`\${API_BASE_URL}/properties`);
+      const res = await axios.get(`${API_BASE_URL}/properties`);
       const maxId = res.data.reduce((max, p) => {
         const idToCheck = p.propertyCode || p.id;
         const n = propertySequenceNumber(idToCheck);
@@ -636,7 +636,7 @@ function SalesMobile() {
         }
       }
 
-      await axios.post(`\${API_BASE_URL}/properties`, {
+      await axios.post(`${API_BASE_URL}/properties`, {
         id: newId,
         propertyCode: newId,
         address: fullAddress,

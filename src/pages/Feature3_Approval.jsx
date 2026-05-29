@@ -110,7 +110,7 @@ function Feature3_Approval() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`\${API_BASE_URL}/properties`);
+      const res = await axios.get(`${API_BASE_URL}/properties`);
       const payload = res.data;
       const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
       setProperties(rows);
@@ -221,7 +221,7 @@ function Feature3_Approval() {
         return;
       }
       try {
-        const listingsRes = await axios.get(`\${API_BASE_URL}/listings`);
+        const listingsRes = await axios.get(`${API_BASE_URL}/listings`);
         const listingsPayload = listingsRes.data;
         const listingsRows = Array.isArray(listingsPayload)
           ? listingsPayload
@@ -250,7 +250,7 @@ function Feature3_Approval() {
             images: replaceDataImageUrlsForSmallPayload(merged.images, merged.id),
           };
         }
-        await axios.put(`\${API_BASE_URL}/properties/${encodeURIComponent(selectedProp.id)}`, merged);
+        await axios.put(`${API_BASE_URL}/properties/${encodeURIComponent(selectedProp.id)}`, merged);
         await postEntityAudit({
           action: 'F3-Duyệt phê duyệt cập nhật tài sản',
           actionType: AUDIT_ACTION_TYPE.PROPERTY_F3_APPROVE_UPDATE,
@@ -267,7 +267,7 @@ function Feature3_Approval() {
           },
         });
         const updMsg = buildUpdateApprovalMessage(selectedProp.propertyCode || selectedProp.id, true);
-        await axios.post(`\${API_BASE_URL}/notifications`, {
+        await axios.post(`${API_BASE_URL}/notifications`, {
           propertyId: selectedProp.id,
           recipient: selectedProp.createdBy,
           message: updMsg,
@@ -290,7 +290,7 @@ function Feature3_Approval() {
       const updatedStatus = type === 'Standard' ? 'Được duyệt' : 'Được đảm bảo';
       const warehouseType = type === 'Standard' ? 'Kho chuẩn' : 'Kho đảm bảo';
       const now = new Date().toISOString();
-      await axios.patch(`\${API_BASE_URL}/properties/${selectedProp.id}`, {
+      await axios.patch(`${API_BASE_URL}/properties/${selectedProp.id}`, {
         level1_status: updatedStatus,
         level2_status: 'Chưa niêm yết',
         warehouse_type: warehouseType,
@@ -317,7 +317,7 @@ function Feature3_Approval() {
         kind: 'approve',
         warehouseType: warehouseType,
       });
-      await axios.post(`\${API_BASE_URL}/notifications`, {
+      await axios.post(`${API_BASE_URL}/notifications`, {
         propertyId: selectedProp.id,
         recipient: selectedProp.createdBy,
         message: whMsg,
@@ -346,7 +346,7 @@ function Feature3_Approval() {
 
     try {
       if (isPendingPropertyUpdate(selectedProp)) {
-        await axios.patch(`\${API_BASE_URL}/properties/${selectedProp.id}`, {
+        await axios.patch(`${API_BASE_URL}/properties/${selectedProp.id}`, {
           pending_update_payload: null,
           update_request_status: null,
           update_requested_at: null,
@@ -369,7 +369,7 @@ function Feature3_Approval() {
         });
 
         const updRejectMsg = buildUpdateApprovalMessage(selectedProp.propertyCode || selectedProp.id, false);
-        await axios.post(`\${API_BASE_URL}/notifications`, {
+        await axios.post(`${API_BASE_URL}/notifications`, {
           propertyId: selectedProp.id,
           recipient: selectedProp.createdBy,
           message: `${updRejectMsg} Lý do: ${rejectReason}`,
@@ -388,7 +388,7 @@ function Feature3_Approval() {
       }
 
       const now = new Date().toISOString();
-      await axios.patch(`\${API_BASE_URL}/properties/${selectedProp.id}`, {
+      await axios.patch(`${API_BASE_URL}/properties/${selectedProp.id}`, {
         level1_status: 'Bị từ chối',
         rejected_reason: rejectReason,
         rejectedAt: now,
@@ -413,7 +413,7 @@ function Feature3_Approval() {
         kind: 'reject',
         rejectReason,
       });
-      await axios.post(`\${API_BASE_URL}/notifications`, {
+      await axios.post(`${API_BASE_URL}/notifications`, {
         propertyId: selectedProp.id,
         recipient: selectedProp.createdBy,
         message: rejectMsg,

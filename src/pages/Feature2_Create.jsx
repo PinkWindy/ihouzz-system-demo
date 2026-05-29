@@ -182,8 +182,8 @@ function Feature2_Create() {
     (async () => {
       try {
         const [resP, resL] = await Promise.all([
-          axios.get(`\${API_BASE_URL}/properties`),
-          axios.get(`\${API_BASE_URL}/listings`),
+          axios.get(`${API_BASE_URL}/properties`),
+          axios.get(`${API_BASE_URL}/listings`),
         ]);
         setProperties(normalizeJsonServerList(resP.data));
         setListings(normalizeJsonServerList(resL.data));
@@ -205,8 +205,8 @@ function Feature2_Create() {
 
   const reloadPropertiesAndListings = async () => {
     const [resP, resL] = await Promise.all([
-      axios.get(`\${API_BASE_URL}/properties`),
-      axios.get(`\${API_BASE_URL}/listings`),
+      axios.get(`${API_BASE_URL}/properties`),
+      axios.get(`${API_BASE_URL}/listings`),
     ]);
     setProperties(normalizeJsonServerList(resP.data));
     setListings(normalizeJsonServerList(resL.data));
@@ -221,7 +221,7 @@ function Feature2_Create() {
     if (!window.confirm(`Xác nhận Khách hàng đã ký HĐMG cho ${propertyDisplayCode(row)}?`)) return;
     const now = new Date().toISOString();
     try {
-      await axios.patch(`\${API_BASE_URL}/properties/${encodeURIComponent(row.id)}`, {
+      await axios.patch(`${API_BASE_URL}/properties/${encodeURIComponent(row.id)}`, {
         level1_status: 'KH đã ký',
         statusLv1: 'KH đã ký',
         kh_signed_at: now,
@@ -254,7 +254,7 @@ function Feature2_Create() {
     }
     const now = new Date().toISOString();
     try {
-      await axios.patch(`\${API_BASE_URL}/properties/${encodeURIComponent(row.id)}`, {
+      await axios.patch(`${API_BASE_URL}/properties/${encodeURIComponent(row.id)}`, {
         level1_status: 'Chờ POS duyệt',
         statusLv1: 'Chờ POS duyệt',
         submitted_to_pos_at: now,
@@ -270,7 +270,7 @@ function Feature2_Create() {
         old_status: 'KH đã ký',
         new_status: 'Chờ POS duyệt',
       });
-      await axios.post(`\${API_BASE_URL}/notifications`, {
+      await axios.post(`${API_BASE_URL}/notifications`, {
         propertyId: row.propertyCode || row.id,
         recipient: row.pos_manager || 'GĐ POS',
         message: `Tài sản ${propertyDisplayCode(row)} (KH đã ký HĐMG) chờ phê duyệt nhập kho.`,
@@ -369,7 +369,7 @@ function Feature2_Create() {
     );
     const changes = diffPropertyUpdate(updateTarget, pendingToSend);
     try {
-      await axios.patch(`\${API_BASE_URL}/properties/${encodeURIComponent(updateTarget.id)}`, {
+      await axios.patch(`${API_BASE_URL}/properties/${encodeURIComponent(updateTarget.id)}`, {
         ...meta,
         pending_update_payload: pendingToSend,
       });
@@ -390,7 +390,7 @@ function Feature2_Create() {
       setUpdateTarget(null);
       setUpdateForm(null);
       setUpdateExtraFiles([]);
-      const res = await axios.get(`\${API_BASE_URL}/properties`);
+      const res = await axios.get(`${API_BASE_URL}/properties`);
       setProperties(normalizeJsonServerList(res.data));
       alert(
         didSubstituteImages
@@ -483,7 +483,7 @@ function Feature2_Create() {
     const openFromNotif = async (propId, openForEdit) => {
       setMainTab('myprops');
       try {
-        const res = await axios.get(`\${API_BASE_URL}/properties`);
+        const res = await axios.get(`${API_BASE_URL}/properties`);
         if (cancelled) return;
         const list = normalizeJsonServerList(res.data);
         setProperties(list);
@@ -498,7 +498,7 @@ function Feature2_Create() {
 
     (async () => {
       try {
-        const res = await axios.get(`\${API_BASE_URL}/notifications`);
+        const res = await axios.get(`${API_BASE_URL}/notifications`);
         if (cancelled) return;
         const list = normalizeJsonServerList(res.data);
         const unread = list
@@ -524,7 +524,7 @@ function Feature2_Create() {
             durationMs: 14000,
           });
           try {
-            await axios.patch(`\${API_BASE_URL}/notifications/${encodeURIComponent(n.id)}`, {
+            await axios.patch(`${API_BASE_URL}/notifications/${encodeURIComponent(n.id)}`, {
               isRead: true,
             });
           } catch (patchErr) {
@@ -544,7 +544,7 @@ function Feature2_Create() {
   const fullAddress = useMemo(() => buildFullAddress(address), [address]);
 
   const fetchDuplicateMatches = async (addr, listingType, excludeId) => {
-    const res = await axios.get(`\${API_BASE_URL}/properties`);
+    const res = await axios.get(`${API_BASE_URL}/properties`);
     return findDuplicateProperties(res.data, {
       type: listingType,
       address: addr,
@@ -601,7 +601,7 @@ function Feature2_Create() {
       try {
         const mergedImages = await resolveDraftImages(draftTarget.id, draftEditForm, draftExtraFiles);
         const now = new Date().toISOString();
-        await axios.patch(`\${API_BASE_URL}/properties/${encodeURIComponent(draftTarget.id)}`, {
+        await axios.patch(`${API_BASE_URL}/properties/${encodeURIComponent(draftTarget.id)}`, {
           type: draftEditForm.type,
           propertyType: draftEditForm.propertyType,
           area: Number(String(draftEditForm.area).replace(/,/g, '')) || 0,
@@ -707,7 +707,7 @@ function Feature2_Create() {
       updatedAt: now,
     };
     try {
-      await axios.patch(`\${API_BASE_URL}/properties/${encodeURIComponent(draftTarget.id)}`, payload);
+      await axios.patch(`${API_BASE_URL}/properties/${encodeURIComponent(draftTarget.id)}`, payload);
       await postEntityAudit({
         action: `[F2] Đầu chủ cập nhật nháp ${draftTarget.id}`,
         actionType: AUDIT_ACTION_TYPE.PROPERTY_F2_DRAFT_UPDATE,
@@ -716,7 +716,7 @@ function Feature2_Create() {
         user: currentUser.name || 'Sales (F2)',
         user_id: USER_ID,
       });
-      const res = await axios.get(`\${API_BASE_URL}/properties`);
+      const res = await axios.get(`${API_BASE_URL}/properties`);
       setProperties(normalizeJsonServerList(res.data));
       setShowDraftModal(false);
       setDraftTarget(null);
@@ -735,7 +735,7 @@ function Feature2_Create() {
       return;
     }
     try {
-      const res = await axios.get(`\${API_BASE_URL}/properties`);
+      const res = await axios.get(`${API_BASE_URL}/properties`);
       const maxId = res.data.reduce((max, p) => {
         const idToCheck = p.propertyCode || p.id;
         const n = propertySequenceNumber(idToCheck);
@@ -743,7 +743,7 @@ function Feature2_Create() {
       }, 0);
       const newId = `LS-${String(maxId + 1).padStart(5, '0')}`;
       const draftAddress = fullAddress || '(Chưa nhập địa chỉ)';
-      await axios.post(`\${API_BASE_URL}/properties`, {
+      await axios.post(`${API_BASE_URL}/properties`, {
         id: newId,
         propertyCode: newId,
         address: draftAddress,
@@ -908,18 +908,18 @@ function Feature2_Create() {
     if (pendingSubmitPropertyId) {
       if (dummyImageUrls.length) body.images = dummyImageUrls;
       await axios.patch(
-        `\${API_BASE_URL}/properties/${encodeURIComponent(pendingSubmitPropertyId)}`,
+        `${API_BASE_URL}/properties/${encodeURIComponent(pendingSubmitPropertyId)}`,
         body,
       );
     } else {
-      const res = await axios.get(`\${API_BASE_URL}/properties`);
+      const res = await axios.get(`${API_BASE_URL}/properties`);
       const maxId = res.data.reduce((max, p) => {
         const idToCheck = p.propertyCode || p.id;
         const n = propertySequenceNumber(idToCheck);
         return n != null ? Math.max(max, n) : max;
       }, 0);
       savedId = `LS-${String(maxId + 1).padStart(5, '0')}`;
-      await axios.post(`\${API_BASE_URL}/properties`, {
+      await axios.post(`${API_BASE_URL}/properties`, {
         id: savedId,
         propertyCode: savedId,
         ...body,
@@ -950,7 +950,7 @@ function Feature2_Create() {
     });
 
     if (selectedBranch === 1) {
-      await axios.post(`\${API_BASE_URL}/notifications`, {
+      await axios.post(`${API_BASE_URL}/notifications`, {
         propertyId: savedId,
         recipient: 'Khách hàng (demo)',
         message: `[Demo eSign] Link ký HĐMG đã gửi qua Zalo OA / Email cho ${savedId}.`,
@@ -959,7 +959,7 @@ function Feature2_Create() {
         isRead: false,
       });
     } else if (selectedBranch === 2 || selectedBranch === 3) {
-      await axios.post(`\${API_BASE_URL}/notifications`, {
+      await axios.post(`${API_BASE_URL}/notifications`, {
         propertyId: savedId,
         recipient: currentUser.pos_name ? 'GĐ POS' : 'Giám đốc POS',
         message:
@@ -1485,8 +1485,8 @@ function Feature2_Create() {
               onClick={async () => {
                 try {
                   const [resP, resL] = await Promise.all([
-                    axios.get(`\${API_BASE_URL}/properties`),
-                    axios.get(`\${API_BASE_URL}/listings`),
+                    axios.get(`${API_BASE_URL}/properties`),
+                    axios.get(`${API_BASE_URL}/listings`),
                   ]);
                   setProperties(normalizeJsonServerList(resP.data));
                   setListings(normalizeJsonServerList(resL.data));

@@ -268,7 +268,7 @@ function Feature1_Login() {
 
     setLoginLoading(true);
     try {
-      const res = await fetch(`\${API_BASE_URL}/users`);
+      const res = await fetch(`${API_BASE_URL}/users`);
       const allUsers = await res.json();
       const matched = allUsers.find((u) => u.email === emailNorm);
       if (matched?.status === 'inactive') {
@@ -369,7 +369,7 @@ function Feature1_Login() {
   };
 
   const completeLogin = async () => {
-    const res = await fetch(`\${API_BASE_URL}/users`);
+    const res = await fetch(`${API_BASE_URL}/users`);
     const allUsers = await res.json();
     const emailNorm = email.trim();
     let matchedUser = allUsers.find((u) => u.email === emailNorm);

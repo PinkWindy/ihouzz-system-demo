@@ -29,17 +29,17 @@ function POSDesktop() {
   }, []);
 
   const fetchData = async () => {
-    const res = await axios.get(`\${API_BASE_URL}/properties`);
+    const res = await axios.get(`${API_BASE_URL}/properties`);
     setProperties(res.data);
   };
   const fetchLogs = async () => {
-    const res = await axios.get(`\${API_BASE_URL}/logs`);
+    const res = await axios.get(`${API_BASE_URL}/logs`);
     setLogs(res.data);
   };
 
   const handleAction = async (prop, newLv1, newLv2, actionName) => {
     const updated = { ...prop, statusLv1: newLv1 || prop.statusLv1, statusLv2: newLv2 || prop.statusLv2 };
-    await axios.put(`\${API_BASE_URL}/properties/${prop.id}`, updated);
+    await axios.put(`${API_BASE_URL}/properties/${prop.id}`, updated);
     await logAudit(actionName, prop.id);
     alert(`✅ Thành công: ${actionName}`);
     fetchData(); fetchLogs();
