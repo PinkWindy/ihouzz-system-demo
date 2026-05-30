@@ -382,6 +382,7 @@ export default function Feature9_Warehouse() {
               <input
                 type="date"
                 className="form-control form-control-sm"
+                style={{ width: 130 }}
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
                 title="Từ ngày"
@@ -390,6 +391,7 @@ export default function Feature9_Warehouse() {
               <input
                 type="date"
                 className="form-control form-control-sm"
+                style={{ width: 130 }}
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
                 title="Đến ngày"
