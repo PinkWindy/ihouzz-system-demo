@@ -525,7 +525,18 @@ export default function Feature5_MKTApproval() {
                     <input type="date" className="form-control form-control-sm" style={{width:130}} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
                     <span className="small text-muted">—</span>
                     <input type="date" className="form-control form-control-sm" style={{width:130}} value={dateTo} onChange={e => setDateTo(e.target.value)} />
-                    {(dateFrom || dateTo) && <button className="btn btn-outline-secondary btn-sm" onClick={() => { setDateFrom(''); setDateTo(''); }}>×</button>}
+                    <button
+                      className="btn btn-outline-secondary btn-sm"
+                      style={{ fontSize: 10, padding: '2px 6px', lineHeight: 1.1 }}
+                      onClick={() => {
+                        setDateFrom('');
+                        setDateTo('');
+                      }}
+                    >
+                      Đặt
+                      <br />
+                      lại
+                    </button>
                   </div>
                 </div>
               </div>
