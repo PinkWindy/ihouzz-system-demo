@@ -459,7 +459,7 @@ function Feature3_Approval() {
           <div>
             <strong>SLA nhắc hạn ({SLA_REMINDER_DAYS} ngày):</strong>{' '}
             {overduePending.length} hồ sơ chờ xử lý quá hạn —{' '}
-            {overduePending.map((p) => propertyDisplayCode(p.id)).join(', ')}
+            {overduePending.map((p) => formatPropertyId(p.propertyCode || p.id)).join(', ')}
           </div>
         </div>
       )}
@@ -841,7 +841,7 @@ function Feature3_Approval() {
                 <ul className="list-unstyled small mb-0 bg-light rounded-3 p-3">
                   <li className="mb-2">
                     <span className="text-muted">Mã tài sản:</span>{' '}
-                    <strong className="text-primary">{propertyDisplayCode(selectedProp.id)}</strong>
+                    <strong className="text-primary">{formatPropertyId(selectedProp.propertyCode || selectedProp.id)}</strong>
                   </li>
                   <li className="mb-2">
                     <span className="text-muted">Địa chỉ:</span> {selectedProp.address || '—'}
@@ -895,8 +895,8 @@ function Feature3_Approval() {
               <div className="modal-header bg-danger text-white">
                 <h5 className="modal-title fw-bold">
                   {selectedProp && isPendingPropertyUpdate(selectedProp)
-                    ? `Từ chối phê duyệt cập nhật — ${selectedProp.id}`
-                    : `Từ chối hồ sơ ${selectedProp?.id}`}
+                    ? `Từ chối phê duyệt cập nhật — ${formatPropertyId(selectedProp.propertyCode || selectedProp.id)}`
+                    : `Từ chối hồ sơ ${formatPropertyId(selectedProp.propertyCode || selectedProp?.id)}`}
                 </h5>
                 <button type="button" className="btn-close btn-close-white" onClick={() => setShowRejectModal(false)}></button>
               </div>

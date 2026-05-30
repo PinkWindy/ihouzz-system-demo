@@ -153,7 +153,7 @@ export default function Feature5_MKTApproval() {
   }, [listings, getProperty, user]);
 
   const filtered = useMemo(() => {
-    return scopedListings.filter((l) => {
+    const list = scopedListings.filter((l) => {
       if (filterStatus === 'pending')
         return l.listing_status === 'Chờ duyệt' || l.listing_status === 'Chờ duyệt chỉnh sửa';
       if (filterStatus === 'approved') return l.listing_status === 'Đã duyệt';
@@ -169,6 +169,16 @@ export default function Feature5_MKTApproval() {
         if (dateTo && day > dateTo) return false;
         return true;
       });
+    });
+
+    return [...list].sort((a, b) => {
+      const getLatestTime = (x) => {
+        const times = [x.updatedAt, x.createdAt, x.approvedAt, x.resubmittedAt]
+          .filter(Boolean)
+          .map(t => new Date(t).getTime());
+        return times.length > 0 ? Math.max(...times) : 0;
+      };
+      return getLatestTime(b) - getLatestTime(a);
     });
   }, [scopedListings, filterStatus, dateFrom, dateTo]);
 

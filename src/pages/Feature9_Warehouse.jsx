@@ -374,7 +374,7 @@ export default function Feature9_Warehouse() {
               </select>
             )}
           </div>
-          <div className="col-md-3">
+          <div className="col-md-12 mt-2">
             <div className="d-flex gap-1 align-items-center flex-wrap">
               <span className="input-group-text bg-white border rounded-start" style={{ fontSize: 11 }} title="Từ đầu tháng đến hôm nay (mặc định)">
                 <i className="bi bi-calendar3"></i>
@@ -708,7 +708,12 @@ export default function Feature9_Warehouse() {
                             <div className="fw-semibold" style={{ fontSize: 12 }}>
                               {(() => {
                                 let s = row.action || '';
-                                s = s.replace(/TS (PIS_[a-zA-Z0-9_]+|P[0-9]+)/g, (m, p1) => `TS ${formatPropertyId(p1)}`);
+                                s = s.replace(/TS ([a-zA-Z0-9_-]+)/g, (m, p1) => {
+                                  if (p1.startsWith('LS-')) return m;
+                                  const p = props.find((x) => x.id === p1);
+                                  if (p) return `TS ${formatPropertyId(p.propertyCode || p.id)}`;
+                                  return `TS ${formatPropertyId(p1)}`;
+                                });
                                 s = s.replace(/— ([a-zA-Z0-9_-]+)(\s*[-·]\s*|\s*\()/g, (m, rawId, suffix) => {
                                   if (rawId.startsWith('LT-') || rawId.startsWith('LS-')) return m;
                                   const lst = listings.find((x) => x.id === rawId);
