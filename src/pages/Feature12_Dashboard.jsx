@@ -175,7 +175,7 @@ export default function Feature12_Dashboard() {
       }
     }
 
-    return rows.filter((p) => passesDateRange(p, dateFrom, dateTo));
+    return rows;
   }, [
     properties,
     users,
@@ -296,7 +296,11 @@ export default function Feature12_Dashboard() {
 
   const drillToF9 = useCallback(
     (preset) => {
-      const state = { dateFrom: dateFrom || undefined, dateTo: dateTo || undefined };
+      const state = {
+        dateFrom: '',
+        dateTo: '',
+        filterPOS: selectedPos !== 'ALL' ? selectedPos : undefined,
+      };
       if (preset === 'approved') {
         state.filterLv1 = 'Được duyệt';
       } else if (preset === 'listed') {
@@ -308,6 +312,17 @@ export default function Feature12_Dashboard() {
   );
 
   const handleExportDashboard = () => {
+    if (!dateFrom || !dateTo) {
+      alert("Bắt buộc chọn Thời gian (Từ ngày - Đến ngày) để xuất dữ liệu báo cáo!");
+      return;
+    }
+    const d1 = new Date(dateFrom);
+    const d2 = new Date(dateTo);
+    if ((d2 - d1) / (1000 * 3600 * 24) > 90) {
+      alert("Dữ liệu xuất báo cáo không được vượt quá 90 ngày. Vui lòng chọn lại khoảng thời gian!");
+      return;
+    }
+
     const formatDt = (iso) => {
       if (!iso) return '';
       const d = new Date(iso);
@@ -347,7 +362,9 @@ export default function Feature12_Dashboard() {
 
     const csv = [header.join(',')];
 
-    scopedProps.forEach((p) => {
+    const exportProps = scopedProps.filter((p) => passesDateRange(p, dateFrom, dateTo));
+
+    exportProps.forEach((p) => {
       const lsts = listings.filter(
         (l) => String(l.property_id) === String(p.id) || String(l.property_id) === String(p.propertyCode),
       );
@@ -792,7 +809,7 @@ export default function Feature12_Dashboard() {
               <div className="d-flex align-items-center justify-content-between">
                 <div className="d-flex align-items-center gap-2">
                   <span className="d-inline-block rounded-circle" style={{ width: 10, height: 10, background: '#f59e0b' }}></span>
-                  <span className="small">Chờ duyệt (Level 1)</span>
+                  <span className="small">Chờ duyệt nhập kho</span>
                 </div>
                 <div className="d-flex align-items-center gap-2">
                   <span className="small text-white-50">{statusCounts.pending} TS</span>
