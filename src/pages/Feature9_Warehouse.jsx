@@ -662,23 +662,39 @@ export default function Feature9_Warehouse() {
                 {/* Timeline */}
                 <div>
                   <div className="text-muted mb-2">📋 Timeline</div>
-                  {[
-                    { date: selected.createdAt, label: 'Tạo hồ sơ', icon: 'bi-plus-circle', color: '#1976d2' },
-                    selected.approvedAt && { date: selected.approvedAt, label: `Duyệt kho bởi ${selected.approvedBy || '—'}`, icon: 'bi-check-circle', color: '#388e3c' },
-                    (selected.mktApproveAt || (selected.mktApproveBy && selected.updatedAt)) && { date: selected.mktApproveAt || selected.updatedAt, label: `Duyệt Niêm yết bởi ${selected.mktApproveBy || 'MKT'}`, icon: 'bi-megaphone-fill', color: '#0288d1' },
-                    selected.rejectedAt && { date: selected.rejectedAt, label: `Từ chối kho bởi ${selected.rejectedBy || '—'}`, icon: 'bi-x-octagon', color: '#d32f2f' },
-                    selected.unsourceRequestedAt && { date: selected.unsourceRequestedAt, label: `Yêu cầu gỡ nguồn bởi ${selected.unsourceRequestedBy || '—'}`, icon: 'bi-exclamation-circle', color: '#f57c00' },
-                    selected.unsourceApprovedAt && { date: selected.unsourceApprovedAt, label: `Duyệt gỡ nguồn bởi ${selected.unsourceApprovedBy || '—'}`, icon: 'bi-x-circle', color: '#616161' },
-                    selected.unsourceRejectedAt && { date: selected.unsourceRejectedAt, label: `Từ chối gỡ nguồn bởi ${selected.unsourceRejectedBy || '—'}`, icon: 'bi-arrow-counterclockwise', color: '#d32f2f' },
-                  ].filter(Boolean).sort((a, b) => new Date(a.date) - new Date(b.date)).map((ev, i) => (
-                    <div key={i} className="d-flex align-items-start gap-2 mb-2">
-                      <i className={`bi ${ev.icon} mt-1`} style={{ color: ev.color }}></i>
-                      <div>
-                        <div style={{ fontSize: 12 }}>{ev.label}</div>
-                        <div className="text-muted" style={{ fontSize: 11 }}>{new Date(ev.date).toLocaleString('vi-VN')}</div>
+                  {(() => {
+                    const tlEvents = [
+                      { date: selected.createdAt, label: 'Tạo hồ sơ', icon: 'bi-plus-circle', color: '#1976d2' },
+                      selected.approvedAt && { date: selected.approvedAt, label: `Duyệt kho bởi ${selected.approvedBy || '—'}`, icon: 'bi-check-circle', color: '#388e3c' },
+                      (selected.mktApproveAt || (selected.mktApproveBy && selected.updatedAt)) && { date: selected.mktApproveAt || selected.updatedAt, label: `Duyệt Niêm yết bởi ${selected.mktApproveBy || 'MKT'}`, icon: 'bi-megaphone-fill', color: '#0288d1' },
+                      selected.rejectedAt && { date: selected.rejectedAt, label: `Từ chối kho bởi ${selected.rejectedBy || '—'}`, icon: 'bi-x-octagon', color: '#d32f2f' },
+                      selected.unsourceRequestedAt && { date: selected.unsourceRequestedAt, label: `Yêu cầu gỡ nguồn bởi ${selected.unsourceRequestedBy || '—'}`, icon: 'bi-exclamation-circle', color: '#f57c00' },
+                      selected.unsourceApprovedAt && { date: selected.unsourceApprovedAt, label: `Duyệt gỡ nguồn bởi ${selected.unsourceApprovedBy || '—'}`, icon: 'bi-x-circle', color: '#616161' },
+                      selected.unsourceRejectedAt && { date: selected.unsourceRejectedAt, label: `Từ chối gỡ nguồn bởi ${selected.unsourceRejectedBy || '—'}`, icon: 'bi-arrow-counterclockwise', color: '#d32f2f' },
+                    ];
+
+                    const entries = propertyLogEntries(selected);
+                    entries.forEach(log => {
+                      if (!log.action) return;
+                      if (log.action.includes('gửi yêu cầu phê duyệt cập nhật')) {
+                        tlEvents.push({ date: log.timestamp, label: `Yêu cầu cập nhật bởi ${log.user || '—'}`, icon: 'bi-pencil-square', color: '#17a2b8' });
+                      } else if (log.action.includes('Từ chối phê duyệt cập nhật')) {
+                        tlEvents.push({ date: log.timestamp, label: `Từ chối cập nhật bởi ${log.user || '—'}`, icon: 'bi-x-octagon', color: '#d32f2f' });
+                      } else if (log.action.includes('Duyệt phê duyệt cập nhật')) {
+                        tlEvents.push({ date: log.timestamp, label: `Duyệt cập nhật bởi ${log.user || '—'}`, icon: 'bi-check2-all', color: '#28a745' });
+                      }
+                    });
+
+                    return tlEvents.filter(Boolean).sort((a, b) => new Date(a.date) - new Date(b.date)).map((ev, i) => (
+                      <div key={i} className="d-flex align-items-start gap-2 mb-2">
+                        <i className={`bi ${ev.icon} mt-1`} style={{ color: ev.color }}></i>
+                        <div>
+                          <div style={{ fontSize: 12 }}>{ev.label}</div>
+                          <div className="text-muted" style={{ fontSize: 11 }}>{new Date(ev.date).toLocaleString('vi-VN')}</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
 
                 <div className="mt-3 border-top pt-3">

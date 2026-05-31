@@ -606,7 +606,7 @@ export default function Feature7_UnlistApproval() {
               </div>
               <div className="modal-body p-4">
                 <div className="alert alert-light border mb-3">
-                  <div className="fw-semibold">{selected.id} · {selected.title}</div>
+                  <div className="fw-semibold">{formatListingId(selected.listingCode || selected.id)} · {selected.title}</div>
                 </div>
                 <div className="mb-3">
                   <label className="form-label fw-semibold">
