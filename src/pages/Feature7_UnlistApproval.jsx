@@ -209,7 +209,7 @@ export default function Feature7_UnlistApproval() {
     }
 
     await postAuditLog({
-      actionText: `Duyệt gỡ tin → Lv2="${nextLv2}" — ${formatListingId(selected.listingCode || selected.id)}`,
+      actionText: `[F7-UC007] Duyệt gỡ tin → Lv2="${nextLv2}" — ${formatListingId(selected.listingCode || selected.id)}`,
       actionType: AUDIT_ACTION_TYPE.UC007_APPROVE_UNLIST,
       listingId: selected.id,
       propertyId: prop.id || selected.property_id,
@@ -244,7 +244,7 @@ export default function Feature7_UnlistApproval() {
     const prop = getProp(selected.property_id);
     const reasonText = rejectReason + (rejectNote ? ` — ${rejectNote}` : '');
     await postAuditLog({
-      actionText: `Từ chối gỡ tin — ${formatListingId(selected.listingCode || selected.id)}`,
+      actionText: `[F7-UC007] Từ chối gỡ tin — ${formatListingId(selected.listingCode || selected.id)}`,
       actionType: AUDIT_ACTION_TYPE.UC007_REJECT_UNLIST,
       listingId: selected.id,
       propertyId: prop.id || selected.property_id,
