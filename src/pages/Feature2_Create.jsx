@@ -110,35 +110,46 @@ function Feature2_Create() {
   };
 
   const handlePriceChange = (e) => {
-    let rawValue = e.target.value.replace(/,/g, ''); // Xóa dấu phẩy cũ
+    let rawValue = String(e.target.value).replace(/,/g, ''); 
     
-    // Nếu nhập chữ hoặc ký tự lạ
-    if (/[^\d]/.test(rawValue) && rawValue !== '') {
-      alert("❌ Lỗi: Giá trị chỉ được phép chứa số nguyên.");
+    if (/[^\d.]/.test(rawValue) && rawValue !== '') {
+      alert("❌ Lỗi: Giá trị chỉ được phép chứa số và dấu chấm (VD: 6.7).");
     }
     
-    rawValue = rawValue.replace(/\D/g, ''); // Loại bỏ toàn bộ ký tự không phải số
+    rawValue = rawValue.replace(/[^\d.]/g, ''); 
     
-    if (rawValue === '') {
-      setFormData({ ...formData, price: '' });
+    // Prevent multiple dots
+    const parts = rawValue.split('.');
+    if (parts.length > 2) {
+      rawValue = parts[0] + '.' + parts.slice(1).join('');
+    }
+
+    if (rawValue === '' || rawValue === '.') {
+      setFormData({ ...formData, price: rawValue });
       return;
     }
     
-    const numValue = parseInt(rawValue, 10);
-    if (numValue <= 0) {
+    if (rawValue.endsWith('.') || (parts.length > 1 && parts[1].endsWith('0'))) {
+      const intPart = parts[0] ? parseInt(parts[0], 10).toLocaleString('en-US') : '0';
+      const decPart = parts.length > 1 ? '.' + parts[1] : '';
+      setFormData({ ...formData, price: intPart + decPart });
+      return;
+    }
+
+    const numValue = parseFloat(rawValue);
+    if (numValue <= 0 && rawValue !== '0') {
       alert("❌ Lỗi: Giá trị số tiền phải lớn hơn 0.");
       setFormData({ ...formData, price: '' });
       return;
     }
 
-    // Kiểm tra giá thấp (TC_F2_12)
     if (formData.type === 'Bán' && formData.priceUnit === 'VNĐ' && numValue < 100000000) {
       console.warn("Giá bán quá thấp!");
     }
 
-    // Format lại theo phân cách hàng nghìn (VD: 1,000,000)
-    const formattedPrice = numValue.toLocaleString('en-US');
-    setFormData({ ...formData, price: formattedPrice });
+    const intPart = parts[0] ? parseInt(parts[0], 10).toLocaleString('en-US') : '0';
+    const decPart = parts.length > 1 && parts[1] ? '.' + parts[1] : '';
+    setFormData({ ...formData, price: intPart + decPart });
   };
 
   const [dupStatus, setDupStatus] = useState(null); // null | 'checking' | {dup} | 'clear'
@@ -1142,7 +1153,7 @@ function Feature2_Create() {
                 <div className="col-md-5 mb-3">
                   <label className="form-label small text-muted">Giá <span className="text-danger">*</span></label>
                   <div className="input-group">
-                    <input type="text" className="form-control" placeholder="VD: 1,000,000" required
+                    <input type="text" className="form-control" placeholder="VD: 6.7 (nếu là Tỷ)" required
                       value={formData.price} onChange={handlePriceChange} />
                     <select className="form-select" style={{maxWidth: '140px'}}
                       value={formData.priceUnit} onChange={e => setFormData({ ...formData, priceUnit: e.target.value })}>
@@ -1716,7 +1727,7 @@ function Feature2_Create() {
                   </div>
                   <div className="col-md-3">
                     <label className="form-label fw-semibold">Giá <span className="text-danger">*</span></label>
-                    <input type="text" className="form-control" value={draftEditForm.price}
+                    <input type="text" className="form-control" placeholder="VD: 6.7" value={draftEditForm.price}
                       onChange={e => setDraftEditForm({ ...draftEditForm, price: e.target.value })} />
                   </div>
                   <div className="col-md-3">
