@@ -590,7 +590,14 @@ function SalesMobile() {
     address.ward, address.district, address.province].filter(Boolean).join(', ');
 
   const handleDupCheck = async () => {
-    if (formData.type !== 'Bán' || !address.houseNumber || !address.street) return;
+    if (formData.type !== 'Bán') {
+      alert('Chức năng kiểm tra trùng địa chỉ chỉ bắt buộc và áp dụng cho giao dịch Bán.');
+      return;
+    }
+    if (!address.houseNumber || !address.street) {
+      alert('Vui lòng nhập Số nhà và Tên đường để kiểm tra.');
+      return;
+    }
     try {
       const res = await axios.get(`${API}/properties`);
       const q = `${address.houseNumber} ${address.street}`.toLowerCase();
@@ -599,6 +606,7 @@ function SalesMobile() {
       else { setDupAlert('clear'); }
     } catch (err) {
       console.error("SalesMobile handleDupCheck error", err);
+      alert('Lỗi kết nối khi kiểm tra trùng địa chỉ.');
     }
   };
 
