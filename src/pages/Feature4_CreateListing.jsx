@@ -1320,38 +1320,18 @@ export default function Feature4_CreateListing() {
         </div>
       )}
 
-      {selected && step === 'preview' && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1050 }}>
-          <div className="modal-dialog modal-xl modal-dialog-scrollable">
-            <div className="modal-content border-0" style={{ borderRadius: 16 }}>
-              <div className="modal-header bg-info text-white border-0">
-                <h5 className="modal-title fw-bold">Xem trước tin đăng</h5>
-                <button type="button" className="btn-close btn-close-white" onClick={() => setStep('form')} aria-label="Đóng" />
-              </div>
-              <div className="modal-body">
-                <p className="small text-muted mb-3">
-                  Sau khi gửi, mã tin được chuẩn hóa dạng <strong>LT-#####</strong> (5 chữ số). Ảnh/video dưới đây là nội dung sẽ lưu vào Library.
-                </p>
-                <MediaPreviewCarousel items={localMedia} slide={previewSlide} setSlide={setPreviewSlide} />
-                <h5 className="fw-bold">{form.title}</h5>
-                <pre className="bg-light border rounded p-3 small" style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
-                  {form.description}
-                </pre>
-                <div className="alert alert-light border">SĐT: {form.contact_phone}</div>
-              </div>
-              <div className="modal-footer border-0 bg-light">
-                <button type="button" className="btn btn-outline-secondary" onClick={() => setStep('form')}>
-                  Sửa lại
-                </button>
-                <button type="button" className="btn btn-success fw-bold" disabled={submitting} onClick={handleSubmitNew}>
-                  {submitting && <span className="spinner-border spinner-border-sm me-1" />}
-                  Xác nhận gửi duyệt
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ListingWebsitePreviewModal
+        show={selected && step === 'preview'}
+        onHide={() => setStep('form')}
+        title={form.title}
+        description={form.description}
+        contactPhone={form.contact_phone}
+        property={selected}
+        listing={null}
+        extraImageUrls={localMedia.filter((m) => m.kind === 'image').map((m) => m.url)}
+        onSubmit={handleSubmitNew}
+        submitting={submitting}
+      />
 
       {step === 'success' && (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1050 }}>

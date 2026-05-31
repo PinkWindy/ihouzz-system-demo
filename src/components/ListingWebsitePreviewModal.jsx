@@ -15,6 +15,8 @@ export default function ListingWebsitePreviewModal({
   listing,
   /** Ảnh từ editor (data URL / http) — ưu tiên trên ảnh listing gốc */
   extraImageUrls = [],
+  onSubmit,
+  submitting,
 }) {
   const [slide, setSlide] = useState(0);
 
@@ -202,9 +204,21 @@ export default function ListingWebsitePreviewModal({
             </div>
           </div>
           <div className="modal-footer border-0 bg-light">
-            <button type="button" className="btn btn-primary" onClick={onHide}>
-              Đóng xem trước
-            </button>
+            {onSubmit ? (
+              <>
+                <button type="button" className="btn btn-outline-secondary" onClick={onHide} disabled={submitting}>
+                  Sửa lại
+                </button>
+                <button type="button" className="btn btn-success fw-bold" disabled={submitting} onClick={onSubmit}>
+                  {submitting && <span className="spinner-border spinner-border-sm me-1" />}
+                  Xác nhận gửi duyệt
+                </button>
+              </>
+            ) : (
+              <button type="button" className="btn btn-primary" onClick={onHide}>
+                Đóng xem trước
+              </button>
+            )}
           </div>
         </div>
       </div>
