@@ -674,8 +674,13 @@ export default function Feature12_Dashboard() {
                     className="position-relative"
                     style={{ cursor: 'pointer' }}
                     onClick={() => {
-                      setSelectedPos(item.posName === 'Chưa phân POS' ? 'ALL' : item.posName);
-                      navigate('/feature9', { state: { search: item.posName === 'Chưa phân POS' ? '' : item.posName } });
+                      navigate('/feature9', {
+                        state: {
+                          filterPOS: item.posName === 'Chưa phân POS' ? '' : item.posName,
+                          dateFrom,
+                          dateTo
+                        }
+                      });
                     }}
                     title={`Click để xem chi tiết kho của ${item.posName}`}
                   >

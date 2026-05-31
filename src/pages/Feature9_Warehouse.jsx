@@ -174,6 +174,7 @@ export default function Feature9_Warehouse() {
     if (st.search != null) setSearch(String(st.search));
     if (st.filterLv1) setFilterLv1(st.filterLv1);
     if (st.filterListing) setFilterListing(st.filterListing);
+    if (st.filterPOS) setFilterPOS(st.filterPOS);
     if (st.dateFrom) setDateFrom(st.dateFrom);
     if (st.dateTo) setDateTo(st.dateTo);
   }, [location.key]);
