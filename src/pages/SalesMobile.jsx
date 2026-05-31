@@ -114,13 +114,34 @@ function SalesMobile() {
   };
 
   const handlePriceChange = (e) => {
-    let rawValue = e.target.value.replace(/,/g, '');
-    if (/[^\d]/.test(rawValue) && rawValue !== '') alert("❌ Lỗi: Giá trị chỉ được phép chứa số nguyên.");
-    rawValue = rawValue.replace(/\D/g, '');
-    if (rawValue === '') { setFormData({ ...formData, price: '' }); return; }
-    const numValue = parseInt(rawValue, 10);
-    if (numValue <= 0) { alert("❌ Lỗi: Giá trị số tiền phải lớn hơn 0."); setFormData({ ...formData, price: '' }); return; }
-    setFormData({ ...formData, price: numValue.toLocaleString('en-US') });
+    let rawValue = String(e.target.value).replace(/,/g, ''); 
+    if (/[^\d.]/.test(rawValue) && rawValue !== '') {
+      alert("❌ Lỗi: Giá trị chỉ được phép chứa số và dấu chấm (VD: 6.7).");
+    }
+    rawValue = rawValue.replace(/[^\d.]/g, ''); 
+    const parts = rawValue.split('.');
+    if (parts.length > 2) {
+      rawValue = parts[0] + '.' + parts.slice(1).join('');
+    }
+    if (rawValue === '' || rawValue === '.') {
+      setFormData({ ...formData, price: rawValue });
+      return;
+    }
+    if (rawValue.endsWith('.') || (parts.length > 1 && parts[1].endsWith('0'))) {
+      const intPart = parts[0] ? parseInt(parts[0], 10).toLocaleString('en-US') : '0';
+      const decPart = parts.length > 1 ? '.' + parts[1] : '';
+      setFormData({ ...formData, price: intPart + decPart });
+      return;
+    }
+    const numValue = parseFloat(rawValue);
+    if (numValue <= 0 && rawValue !== '0') {
+      alert("❌ Lỗi: Giá trị số tiền phải lớn hơn 0.");
+      setFormData({ ...formData, price: '' });
+      return;
+    }
+    const intPart = parts[0] ? parseInt(parts[0], 10).toLocaleString('en-US') : '0';
+    const decPart = parts.length > 1 && parts[1] ? '.' + parts[1] : '';
+    setFormData({ ...formData, price: intPart + decPart });
   };
 
   const [dupAlert, setDupAlert] = useState(null); // null | 'dup' | 'clear'
@@ -1538,7 +1559,7 @@ function SalesMobile() {
                 <label className="form-label small text-muted">Giá *</label>
                 <div className="input-group input-group-sm">
                   <input type="text" className="form-control" required
-                    placeholder="VD: 1,000,000" value={formData.price} onChange={handlePriceChange} />
+                    placeholder="VD: 6.7 (Tỷ)" value={formData.price} onChange={handlePriceChange} />
                   <select className="form-select" style={{maxWidth: '110px'}}
                     value={formData.priceUnit} onChange={e => setFormData({ ...formData, priceUnit: e.target.value })}>
                     <option value="tỷ VNĐ">tỷ VNĐ</option>
@@ -2158,9 +2179,19 @@ function SalesMobile() {
                         <label className="form-label">Giá</label>
                         <input className="form-control form-control-sm" value={upForm.price}
                           onChange={(e) => {
-                            let raw = e.target.value.replace(/,/g, '').replace(/\D/g, '');
-                            if (raw === '') { setUpForm({ ...upForm, price: '' }); return; }
-                            setUpForm({ ...upForm, price: parseInt(raw, 10).toLocaleString('en-US') });
+                            let raw = String(e.target.value).replace(/,/g, '').replace(/[^\d.]/g, '');
+                            const parts = raw.split('.');
+                            if (parts.length > 2) raw = parts[0] + '.' + parts.slice(1).join('');
+                            if (raw === '' || raw === '.') { setUpForm({ ...upForm, price: raw }); return; }
+                            if (raw.endsWith('.') || (parts.length > 1 && parts[1].endsWith('0'))) {
+                              const intPart = parts[0] ? parseInt(parts[0], 10).toLocaleString('en-US') : '0';
+                              const decPart = parts.length > 1 ? '.' + parts[1] : '';
+                              setUpForm({ ...upForm, price: intPart + decPart });
+                              return;
+                            }
+                            const intPart = parts[0] ? parseInt(parts[0], 10).toLocaleString('en-US') : '0';
+                            const decPart = parts.length > 1 && parts[1] ? '.' + parts[1] : '';
+                            setUpForm({ ...upForm, price: intPart + decPart });
                           }} />
                       </div>
                     </div>
@@ -2475,7 +2506,7 @@ function SalesMobile() {
                     <input
                       type="text"
                       className="form-control form-control-sm"
-                      value={mobileDraftForm.price}
+                      placeholder="VD: 6.7" value={mobileDraftForm.price}
                       onChange={(e) => setMobileDraftForm({ ...mobileDraftForm, price: e.target.value })}
                     />
                   </div>
