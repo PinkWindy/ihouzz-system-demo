@@ -157,7 +157,9 @@ export default function Feature8_Unsource() {
       const fields = [p.createdAt, p.updatedAt, p.unsourceRequestedAt, p.unsourceApprovedAt, p.unsourceRejectedAt];
       return fields.some(d => {
         if (!d) return false;
-        const day = d.slice(0, 10);
+        const local = new Date(d);
+        if (isNaN(local.getTime())) return false;
+        const day = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`;
         if (dateFrom && day < dateFrom) return false;
         if (dateTo && day > dateTo) return false;
         return true;
