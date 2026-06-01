@@ -340,6 +340,7 @@ export default function Feature8_Unsource() {
                       <th className="small text-muted">POS quản lý</th>
                       <th className="small text-muted">Người tạo</th>
                       <th className="small text-muted">Ngày tạo</th>
+                      <th className="small text-muted">Ngày gỡ nguồn</th>
                       <th className="small text-muted">Trạng thái L1</th>
                       <th className="small text-muted">Trạng thái L2</th>
                       <th className="small text-muted text-end">Hành động</th>
@@ -347,7 +348,7 @@ export default function Feature8_Unsource() {
                   </thead>
                   <tbody>
                     {filtered.length === 0 && (
-                      <tr><td colSpan="8" className="text-center py-5 text-muted"><i className="bi bi-inbox fs-2"></i><p className="mt-2">Không có tài sản nào.</p></td></tr>
+                      <tr><td colSpan="9" className="text-center py-5 text-muted"><i className="bi bi-inbox fs-2"></i><p className="mt-2">Không có tài sản nào.</p></td></tr>
                     )}
                     {filtered.map(p => {
                       const cfg = STATUS_CONFIG[p.level1_status] || { bg: 'secondary', text: 'white', icon: '?' };
@@ -359,6 +360,7 @@ export default function Feature8_Unsource() {
                           <td><span className="badge bg-light text-dark border">{p.pos_name || '—'}</span></td>
                           <td>{p.createdBy}</td>
                           <td>{new Date(p.createdAt).toLocaleDateString('vi-VN')}</td>
+                          <td>{p.unsourceApprovedAt ? new Date(p.unsourceApprovedAt).toLocaleDateString('vi-VN') : '—'}</td>
                           <td><span className={statusBadgeClass(cfg.bg)}>{cfg.icon} {p.level1_status}</span></td>
                           <td><span className={statusBadgeClass(L2_PROPERTY_BADGE[p.level2_status] || 'secondary')}>{p.level2_status}</span></td>
                           <td className="text-end">
