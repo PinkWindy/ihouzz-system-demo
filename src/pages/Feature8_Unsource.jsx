@@ -361,7 +361,16 @@ export default function Feature8_Unsource() {
                           <td>{p.createdBy}</td>
                           <td>{new Date(p.createdAt).toLocaleDateString('vi-VN')}</td>
                           <td>{p.unsourceApprovedAt ? new Date(p.unsourceApprovedAt).toLocaleDateString('vi-VN') : '—'}</td>
-                          <td><span className={statusBadgeClass(cfg.bg)}>{cfg.icon} {p.level1_status}</span></td>
+                          <td>
+                            <span className={statusBadgeClass(cfg.bg)}>{cfg.icon} {p.level1_status}</span>
+                            {p.unsourceRejectedAt && p.level1_status !== 'Chờ duyệt gỡ nguồn' && p.level1_status !== 'Đã gỡ nguồn' && (
+                              <div className="mt-1" style={{ fontSize: '0.75rem' }}>
+                                <span className="text-danger fw-semibold" title={`Lý do: ${p.unsourceRejectNote}`}>
+                                  <i className="bi bi-exclamation-triangle-fill"></i> Từng bị từ chối gỡ
+                                </span>
+                              </div>
+                            )}
+                          </td>
                           <td><span className={statusBadgeClass(L2_PROPERTY_BADGE[p.level2_status] || 'secondary')}>{p.level2_status}</span></td>
                           <td className="text-end">
                             <i className="bi bi-arrow-right-circle-fill text-danger fs-5"></i>
