@@ -97,8 +97,12 @@ export default function Feature5_MKTApproval() {
   const m = String(now5.getMonth() + 1).padStart(2, '0');
   const d = String(now5.getDate()).padStart(2, '0');
   const todayStr5 = `${y}-${m}-${d}`;
-  const firstDayOfMonth5 = `${y}-${m}-01`;
-  const [dateFrom, setDateFrom] = useState(firstDayOfMonth5);
+  const past5 = new Date(now5.getTime() - 60 * 24 * 60 * 60 * 1000);
+  const py = past5.getFullYear();
+  const pm = String(past5.getMonth() + 1).padStart(2, '0');
+  const pd = String(past5.getDate()).padStart(2, '0');
+  const sixtyDaysAgoStr = `${py}-${pm}-${pd}`;
+  const [dateFrom, setDateFrom] = useState(sixtyDaysAgoStr);
   const [dateTo, setDateTo] = useState(todayStr5);
 
   /** Soạn thảo trong panel duyệt */

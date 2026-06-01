@@ -69,8 +69,9 @@ function formatLocalYmd(d) {
 
 function defaultF9DateRange() {
   const now = new Date();
+  const past = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
   return {
-    from: formatLocalYmd(new Date(now.getFullYear(), now.getMonth(), 1)),
+    from: formatLocalYmd(past),
     to: formatLocalYmd(now),
   };
 }
